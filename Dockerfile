@@ -34,6 +34,7 @@ COPY --from=builder --chown=65532:65532 /app/public /app/public
 COPY --from=builder --chown=65532:65532 /data /data
 
 USER 65532:65532
+ENV APP_DB_PATH=/data/petpass.db
 EXPOSE 8000
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
