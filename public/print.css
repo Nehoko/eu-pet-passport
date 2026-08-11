@@ -47,9 +47,10 @@
   background: #082296;
   text-align: center;
 }
-.print-cover .print-stars {
+.print-cover .eu-emblem {
+  width: 32mm;
+  height: 32mm;
   color: #ffd617;
-  line-height: 1.4;
   margin-bottom: 9mm;
 }
 .print-cover p {
