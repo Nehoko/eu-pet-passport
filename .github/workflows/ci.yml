@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.4
+      - name: Format, lint, type-check, test
+        run: deno task ci
+      - name: Compile native binary
+        run: >-
+          deno compile
+          --output=/tmp/petpass
+          --allow-net=0.0.0.0:8000,127.0.0.1:8000
+          --allow-read=/app/public,/data,/run/secrets
+          --allow-write=/data
+          --allow-env=APP_PORT,APP_HOST,APP_DB_PATH,APP_ORIGIN,APP_ADMIN_EMAIL,APP_ADMIN_PASSWORD,APP_ADMIN_PASSWORD_FILE,APP_MEMBER_STATE,APP_COUNTRY_CODE
+          --include=public
+          main.ts
+      - name: Validate Compose
+        run: |
+          mkdir -p secrets
+          printf '%s\n' 'ci-password-long-enough' > secrets/admin_password.txt
+          cp .env.example .env
+          docker compose config --quiet
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: validate
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: petpass-eu:ci
+          build-args: |
+            VERSION=ci
+            REVISION=${{ github.sha }}
+            SOURCE=${{ github.server_url }}/${{ github.repository }}
+      - name: Smoke test
+        run: |
+          docker run -d --name petpass-ci -p 8000:8000 \
+            -e APP_ADMIN_EMAIL=admin@example.test \
+            -e APP_ADMIN_PASSWORD=ci-password-long-enough \
+            -e APP_ORIGIN=http://localhost:8000 \
+            petpass-eu:ci
+          trap 'docker logs petpass-ci; docker rm -f petpass-ci' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready; then exit 0; fi
+            sleep 1
+          done
+          exit 1

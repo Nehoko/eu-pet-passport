@@ -1,0 +1,12 @@
+.git
+.github
+coverage
+data
+docs
+outputs
+secrets
+tests
+tmp
+work
+*.db
+*.log

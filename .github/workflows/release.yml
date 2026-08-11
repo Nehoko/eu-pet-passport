@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.4
+      - name: Match tag and source version
+        run: |
+          VERSION=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("deno.json")).version)')
+          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+      - run: deno task ci
+
+  build-native:
+    needs: validate
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Build and push native image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+            SOURCE=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Scan published architecture
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  publish:
+    needs: build-native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge native images and add SemVer tags
+        id: image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAGS=("-t" "$IMAGE:$VERSION")
+          if [[ "$VERSION" != *-* ]]; then
+            MINOR="${VERSION%.*}"
+            MAJOR="${VERSION%%.*}"
+            TAGS+=("-t" "$IMAGE:$MINOR" "-t" "$IMAGE:$MAJOR" "-t" "$IMAGE:latest")
+          fi
+          docker buildx imagetools create "${TAGS[@]}" \
+            "$IMAGE:${GITHUB_REF_NAME}-amd64" \
+            "$IMAGE:${GITHUB_REF_NAME}-arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE:$VERSION" | awk '/^Digest:/ {print $2; exit}')
+          test -n "$DIGEST"
+          echo "name=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Attest final image index
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Create release assets
+        run: |
+          cp .env.example petpass.env.example
+          sha256sum compose.yml petpass.env.example > SHA256SUMS
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXTRA=()
+          [[ "${{ steps.image.outputs.version }}" == *-* ]] && EXTRA+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --title "PetPass EU ${{ steps.image.outputs.version }}" \
+            --notes "Container: ${{ steps.image.outputs.name }}@${{ steps.image.outputs.digest }}" \
+            "${EXTRA[@]}" \
+            compose.yml petpass.env.example SHA256SUMS

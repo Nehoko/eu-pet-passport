@@ -1,0 +1,185 @@
+.print-body {
+  background: #d9dde6;
+}
+.print-root {
+  padding: 24px;
+}
+.print-toolbar {
+  max-width: 100mm;
+  margin: 0 auto 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.print-toolbar button {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #0637a6;
+  color: white;
+  font-weight: 800;
+}
+.print-toolbar p {
+  margin: 0;
+  font-size: 11px;
+  color: #525c71;
+}
+.passport-page,
+.print-cover {
+  position: relative;
+  width: 100mm;
+  height: 152mm;
+  margin: 0 auto 18px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 14%);
+  break-after: page;
+  page-break-after: always;
+}
+.print-cover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12mm;
+  color: white;
+  background: #082296;
+  text-align: center;
+}
+.print-cover .print-stars {
+  color: #ffd617;
+  line-height: 1.4;
+  margin-bottom: 9mm;
+}
+.print-cover p {
+  font-size: 12pt;
+  font-weight: 750;
+}
+.print-cover h1 {
+  margin: 6mm 0;
+  font-size: 28pt;
+  line-height: 1.05;
+  letter-spacing: .02em;
+}
+.print-cover > strong {
+  margin-top: auto;
+  padding: 2mm 3mm;
+  color: #17233f;
+  background: white;
+  font: 8pt monospace;
+}
+.print-cover > small {
+  margin-top: 3mm;
+  color: #ffd617;
+  font-size: 6.5pt;
+  letter-spacing: .07em;
+}
+.passport-page {
+  padding: 9mm 7mm 8mm;
+  border: 2.5mm solid #cfddf0;
+}
+.passport-page header {
+  padding: 2mm;
+  border: .35mm solid #17233f;
+  border-radius: 2mm;
+  color: #0637a6;
+  text-align: center;
+  font-size: 10pt;
+  font-weight: 850;
+}
+.passport-page-body {
+  padding: 6mm 2mm;
+  font-size: 8.2pt;
+}
+.passport-page footer {
+  position: absolute;
+  left: 4mm;
+  right: 4mm;
+  bottom: 2mm;
+  display: flex;
+  justify-content: space-between;
+  font: 6.5pt monospace;
+  color: #3e475a;
+}
+.copy-watermark {
+  position: absolute;
+  top: 50%;
+  left: -16mm;
+  width: 132mm;
+  transform: rotate(-42deg);
+  color: rgb(180 35 24 / 11%);
+  font-size: 15pt;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-align: center;
+  pointer-events: none;
+}
+.passport-page dl {
+  grid-template-columns: 34mm 1fr;
+  gap: 2.5mm 3mm;
+  margin: 0;
+}
+.passport-page dt {
+  font-size: 6.5pt;
+}
+.passport-page dd {
+  min-height: 5mm;
+  padding-bottom: 1.5mm;
+  border-bottom: .25mm solid #9ba5b6;
+}
+.photo-placeholder {
+  display: grid;
+  place-items: center;
+  width: 45mm;
+  height: 35mm;
+  margin: 0 auto 5mm;
+  border: .5mm dashed #0637a6;
+  border-radius: 3mm;
+  color: #0637a6;
+  text-align: center;
+}
+.print-entry {
+  margin-bottom: 4mm;
+  padding: 3mm;
+  border: .3mm solid #aeb8c9;
+  border-radius: 2mm;
+}
+.print-entry > strong {
+  display: block;
+  margin-bottom: 3mm;
+  color: #0637a6;
+}
+.blank-entry {
+  margin-top: 20mm;
+  padding: 5mm;
+  border: .4mm dashed #aeb8c9;
+  color: #6d7686;
+  text-align: center;
+}
+
+@page {
+  size: 100mm 152mm;
+  margin: 0;
+}
+@media print {
+  html,
+  body,
+  .print-body {
+    width: 100mm;
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+  .print-root {
+    padding: 0;
+  }
+  .print-toolbar {
+    display: none;
+  }
+  .passport-page,
+  .print-cover {
+    margin: 0;
+    box-shadow: none;
+  }
+}

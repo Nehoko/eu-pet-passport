@@ -1,0 +1,49 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PetPass EU authenticated API",
+    "version": "1.0.0",
+    "description": "Session-authenticated read API for digital companion records. Responses are not official EU travel documents."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "responses": {
+          "200": { "description": "Process is responding" }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "responses": {
+          "200": { "description": "Application and database are ready" }
+        }
+      }
+    },
+    "/api/v1/passports/{id}": {
+      "get": {
+        "security": [{ "cookieSession": [] }],
+        "parameters": [{
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "format": "uuid" }
+        }],
+        "responses": {
+          "200": { "description": "Authorised passport record snapshot" },
+          "401": { "description": "Authentication required" },
+          "404": { "description": "Not found or not visible" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "cookieSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "petpass_session"
+      }
+    }
+  }
+}

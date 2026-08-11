@@ -1,0 +1,12 @@
+.DS_Store
+.env
+coverage/
+data/
+outputs/
+secrets/*.txt
+tmp/
+work/
+*.db
+*.db-shm
+*.db-wal
+*.log
