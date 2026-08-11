@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
 
 permissions: {}
 
@@ -19,9 +18,11 @@ jobs:
         with:
           deno-version: v2.9.4
       - name: Match tag and source version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           VERSION=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("deno.json")).version)')
-          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+          test "$RELEASE_TAG" = "v${VERSION}"
       - run: deno task ci
 
   build-native:
@@ -57,11 +58,11 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          tags: ${{ env.IMAGE }}:${{ github.event.release.tag_name }}-${{ matrix.arch }}
           provenance: mode=max
           sbom: true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ github.event.release.tag_name }}
             REVISION=${{ github.sha }}
             SOURCE=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.arch }}
@@ -69,7 +70,7 @@ jobs:
       - name: Scan published architecture
         uses: aquasecurity/trivy-action@0.33.1
         with:
-          image-ref: ${{ env.IMAGE }}:${{ github.ref_name }}-${{ matrix.arch }}
+          image-ref: ${{ env.IMAGE }}:${{ github.event.release.tag_name }}-${{ matrix.arch }}
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -94,9 +95,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Merge native images and add SemVer tags
         id: image
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           TAGS=("-t" "$IMAGE:$VERSION")
           if [[ "$VERSION" != *-* ]]; then
             MINOR="${VERSION%.*}"
@@ -104,8 +107,8 @@ jobs:
             TAGS+=("-t" "$IMAGE:$MINOR" "-t" "$IMAGE:$MAJOR" "-t" "$IMAGE:latest")
           fi
           docker buildx imagetools create "${TAGS[@]}" \
-            "$IMAGE:${GITHUB_REF_NAME}-amd64" \
-            "$IMAGE:${GITHUB_REF_NAME}-arm64"
+            "$IMAGE:${RELEASE_TAG}-amd64" \
+            "$IMAGE:${RELEASE_TAG}-arm64"
           docker buildx imagetools inspect "$IMAGE:$VERSION"
           DIGEST=$(docker buildx imagetools inspect "$IMAGE:$VERSION" | awk '/^Digest:/ {print $2; exit}')
           test -n "$DIGEST"
@@ -121,17 +124,16 @@ jobs:
       - name: Create release assets
         run: |
           cp .env.example petpass.env.example
-          sha256sum compose.yml petpass.env.example > SHA256SUMS
-      - name: Create GitHub Release
+          printf '%s\n' \
+            "Image: ${{ steps.image.outputs.name }}" \
+            "Digest: ${{ steps.image.outputs.digest }}" \
+            "Pull: docker pull ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}" \
+            > container.txt
+          sha256sum compose.yml petpass.env.example container.txt > SHA256SUMS
+      - name: Upload assets to published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          EXTRA=()
-          [[ "${{ steps.image.outputs.version }}" == *-* ]] && EXTRA+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" \
-            --verify-tag \
-            --generate-notes \
-            --title "PetPass EU ${{ steps.image.outputs.version }}" \
-            --notes "Container: ${{ steps.image.outputs.name }}@${{ steps.image.outputs.digest }}" \
-            "${EXTRA[@]}" \
-            compose.yml petpass.env.example SHA256SUMS
+          gh release upload "$RELEASE_TAG" --clobber \
+            compose.yml petpass.env.example container.txt SHA256SUMS
