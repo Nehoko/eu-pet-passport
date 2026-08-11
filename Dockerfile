@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM denoland/deno:debian-2.9.4 AS builder
+FROM denoland/deno:debian-2.9.5 AS builder
 
 WORKDIR /app
 COPY deno.json main.ts ./
