@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "tasks": {
     "dev": "deno run --watch --allow-net=0.0.0.0:8000 --allow-read=public,./data --allow-write=./data --allow-env=APP_PORT,APP_HOST,APP_DB_PATH,APP_ORIGIN,APP_ADMIN_EMAIL,APP_ADMIN_PASSWORD,APP_MEMBER_STATE,APP_COUNTRY_CODE main.ts",
     "start": "deno run --allow-net=0.0.0.0:8000 --allow-read=public,/data,./data,/run/secrets --allow-write=/data,./data --allow-env=APP_PORT,APP_HOST,APP_DB_PATH,APP_ORIGIN,APP_ADMIN_EMAIL,APP_ADMIN_PASSWORD,APP_ADMIN_PASSWORD_FILE,APP_MEMBER_STATE,APP_COUNTRY_CODE main.ts",

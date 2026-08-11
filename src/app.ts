@@ -121,10 +121,13 @@ async function formData(req: Request): Promise<FormData> {
 
 function checkOrigin(req: Request, config: AppConfig): void {
   const origin = req.headers.get("origin");
-  if (origin && origin !== config.origin) {
+  const site = req.headers.get("sec-fetch-site");
+  const opaqueSameOrigin = origin === "null" && site === "same-origin" &&
+    new URL(req.url).host === new URL(config.origin).host;
+  if (origin && origin !== config.origin && !opaqueSameOrigin) {
     throw new ValidationError("Cross-origin form submission rejected");
   }
-  if (req.headers.get("sec-fetch-site") === "cross-site") {
+  if (site === "cross-site") {
     throw new ValidationError("Cross-site form submission rejected");
   }
 }

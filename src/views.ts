@@ -39,13 +39,34 @@ export function csrfInput(csrf: string): string {
   return `<input type="hidden" name="csrf" value="${h(csrf)}">`;
 }
 
+function starPoints(centerX: number, centerY: number): string {
+  return Array.from({ length: 10 }, (_, point) => {
+    const radius = point % 2 === 0 ? 4.8 : 1.9;
+    const angle = -Math.PI / 2 + point * Math.PI / 5;
+    return `${(centerX + Math.cos(angle) * radius).toFixed(2)},${
+      (centerY + Math.sin(angle) * radius).toFixed(2)
+    }`;
+  }).join(" ");
+}
+
+const euStars = Array.from({ length: 12 }, (_, star) => {
+  const angle = -Math.PI / 2 + star * Math.PI / 6;
+  const centerX = 50 + Math.cos(angle) * 35;
+  const centerY = 50 + Math.sin(angle) * 35;
+  return `<polygon class="eu-star" points="${starPoints(centerX, centerY)}"></polygon>`;
+}).join("");
+
+function euEmblem(): string {
+  return `<svg class="eu-emblem" viewBox="0 0 100 100" role="img" aria-label="European Union emblem">${euStars}</svg>`;
+}
+
 export function loginPage(error = ""): string {
   return layout(
     "Sign in",
-    `<section class="login-shell"><div class="login-panel"><div class="passport-mini"><div class="stars">✦ ✦ ✦<br>✦ &nbsp; ✦<br>✦ ✦ ✦</div><strong>EU PET<br>PASSPORT</strong><small>COMPANION RECORD</small></div>
+    `<section class="login-shell"><div class="login-panel"><div class="passport-mini">${euEmblem()}<strong>EU PET<br>PASSPORT</strong><small>COMPANION RECORD</small></div>
     <div class="login-card"><p class="eyebrow">Secure clinic workspace</p><h1>Pet travel records.<br><em>Ready when you are.</em></h1><p class="lede">Manage 2026 EU-model passport data, vet attestations, and travel checks.</p>${
       error ? alert(error, "error") : ""
-    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="legal-note">Digital companion record only. Not a substitute for an authorised physical passport.</p></div></section>`,
+    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="login-help"><strong>First sign-in?</strong> Use the administrator email and password configured with <code>APP_ADMIN_EMAIL</code> and <code>APP_ADMIN_PASSWORD</code>. There is no public signup.</p><p class="legal-note">Digital companion record only. Not a substitute for an authorised physical passport.</p></div></section>`,
   );
 }
 
@@ -146,7 +167,7 @@ export function passportsPage(passports: Passport[]): string {
     passports.map((passport) =>
       `<a class="passport-card" href="/passports/${
         h(passport.id)
-      }"><span class="passport-cover"><span class="tiny-stars">✦ ✦ ✦</span><strong>EU<br>PET<br>PASSPORT</strong><small>${
+      }"><span class="passport-cover">${euEmblem()}<strong>EU<br>PET<br>PASSPORT</strong><small>${
         h(passport.country_code)
       } ${h(passport.number)}</small></span><span><p class="eyebrow">${
         h(passport.model_version)
@@ -249,7 +270,7 @@ export function passportDetailPage(
       "RECORD COPY — NOT VALID AS ORIGINAL PASSPORT. Keep physical authorised booklet with pet.",
     )
   }
-  <section class="passport-summary"><div class="passport-cover large-cover"><span class="tiny-stars">✦ ✦ ✦</span><strong>EU<br>PET<br>PASSPORT</strong><small>${
+  <section class="passport-summary"><div class="passport-cover large-cover">${euEmblem()}<strong>EU<br>PET<br>PASSPORT</strong><small>${
     h(passport.country_code)
   } ${
     h(passport.number)
@@ -369,7 +390,7 @@ export function passportPrintPage(
   const number = `${passport.country_code} ${passport.number}`;
   const total = 13;
   const pages = [
-    `<section class="print-cover"><div class="print-stars">✦ ✦ ✦<br>✦ ✦ ✦<br>✦ ✦ ✦</div><p>European Union<br>[${
+    `<section class="print-cover">${euEmblem()}<p>European Union<br>[${
       h(passport.country_code)
     }]</p><h1>PET<br>PASSPORT</h1><strong>${
       h(number)

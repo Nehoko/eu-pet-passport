@@ -585,14 +585,26 @@ dd {
   color: white;
   font: 600 .45rem monospace;
 }
-.tiny-stars {
+.eu-emblem {
+  display: block;
+  overflow: visible;
   color: var(--yellow);
-  font-size: .57rem;
+}
+.eu-star {
+  fill: currentcolor;
+}
+.passport-cover .eu-emblem {
+  width: 38px;
+  height: 38px;
   margin-bottom: auto;
 }
 .large-cover {
   width: 170px;
   flex: none;
+}
+.large-cover .eu-emblem {
+  width: 52px;
+  height: 52px;
 }
 .large-cover strong {
   font-size: 1.2rem;
@@ -684,6 +696,18 @@ dd {
   font-size: .73rem;
   line-height: 1.55;
 }
+.login-help {
+  margin: 1rem 0 0;
+  padding: .75rem .85rem;
+  border-radius: 10px;
+  color: #46526c;
+  background: #eef3fc;
+  font-size: .75rem;
+  line-height: 1.5;
+}
+.login-help strong {
+  color: var(--ink);
+}
 
 .login-shell {
   min-height: 100vh;
@@ -728,10 +752,10 @@ dd {
   box-shadow: 0 30px 60px rgb(0 0 0 / 28%);
   transform: rotate(-2deg);
 }
-.passport-mini .stars {
+.passport-mini .eu-emblem {
+  width: 88px;
+  height: 88px;
   margin-bottom: 20%;
-  color: var(--yellow);
-  line-height: 1.4;
 }
 .passport-mini strong {
   font-size: clamp(1.8rem, 4vw, 3.2rem);

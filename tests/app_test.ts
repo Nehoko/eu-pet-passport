@@ -38,7 +38,30 @@ Deno.test("HTTP integration covers auth, CSRF, RBAC, and core forms", async () =
     database.bootstrapAdmin(config.adminEmail, config.adminPassword);
     const app = createApp({ database, config });
 
+    const loginPage = await app(request("/login"));
+    const loginHtml = await loginPage.text();
+    assert.equal(loginPage.status, 200);
+    assert.equal(loginHtml.match(/class="eu-star"/g)?.length, 12);
+    assert.match(loginHtml, /APP_ADMIN_EMAIL/);
+
     assert.equal((await app(request("/api/v1/passports/missing"))).status, 401);
+
+    const opaqueSameOrigin = request("/login", "POST", {
+      email: "missing@example.test",
+      password: "invalid-password-long-enough",
+    });
+    opaqueSameOrigin.headers.set("Origin", "null");
+    opaqueSameOrigin.headers.set("Sec-Fetch-Site", "same-origin");
+    assert.equal((await app(opaqueSameOrigin)).status, 401);
+
+    const opaqueCrossSite = request("/login", "POST", {
+      email: config.adminEmail,
+      password: config.adminPassword,
+    });
+    opaqueCrossSite.headers.set("Origin", "null");
+    opaqueCrossSite.headers.set("Sec-Fetch-Site", "cross-site");
+    assert.equal((await app(opaqueCrossSite)).status, 400);
+
     const login = await app(request("/login", "POST", {
       email: config.adminEmail,
       password: config.adminPassword,
@@ -103,6 +126,7 @@ Deno.test("HTTP integration covers auth, CSRF, RBAC, and core forms", async () =
     assert.match(printHtml, /I\. DETAILS OF OWNERSHIP/);
     assert.match(printHtml, /XII\. OTHERS/);
     assert.match(printHtml, /NOT VALID AS ORIGINAL PASSPORT/);
+    assert.equal(printHtml.match(/class="eu-star"/g)?.length, 12);
 
     database.createUser(database.getUserAuth(config.adminEmail)!.id, {
       email: "owner@example.test",
