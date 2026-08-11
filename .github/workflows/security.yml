@@ -40,7 +40,7 @@ jobs:
           load: true
           tags: petpass-eu:scan
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: petpass-eu:scan
           format: table
@@ -48,7 +48,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
       - name: Scan filesystem and Compose
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
