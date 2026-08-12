@@ -174,7 +174,7 @@ export function createApp(
       if (path === "/health/live") return json({ status: "ok" });
       if (path === "/health/ready") {
         database.raw.prepare("SELECT 1").get();
-        return json({ status: "ready", database: "ok", edition: "personal-copy" });
+        return json({ status: "ready", database: "ok", edition: "digital-copy" });
       }
       if (path === "/app.css" || path === "/print.css" || path === "/print.js") {
         const file = path === "/app.css"
@@ -496,7 +496,7 @@ export function createApp(
             data: JSON.parse(record.data_json),
             data_json: undefined,
           })),
-          disclaimer: "Personal digital copy; not an official pet passport",
+          disclaimer: "Digital copy; not an official pet passport",
         });
       }
 

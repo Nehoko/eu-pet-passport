@@ -1,8 +1,8 @@
-name: petpass-personal
+name: petpass-eu-v2
 
 services:
   app:
-    image: ghcr.io/nehoko/eu-pet-passport:${APP_VERSION:-2.0.0-personal.0}
+    image: ghcr.io/nehoko/eu-pet-passport:${APP_VERSION:-latest}
     build: .
     init: true
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8000}
       APP_COUNTRY_CODE: ${APP_COUNTRY_CODE:-DE}
     volumes:
-      - petpass_personal_data:/data
+      - petpass_v2_data:/data
     healthcheck:
       test: ["CMD", "/app/petpass", "healthcheck", "http://127.0.0.1:8000/health/ready"]
       interval: 30s
@@ -32,4 +32,4 @@ services:
       start_period: 15s
 
 volumes:
-  petpass_personal_data:
+  petpass_v2_data:

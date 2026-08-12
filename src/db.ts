@@ -156,14 +156,14 @@ export class PetPassDatabase {
       INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'));
     `);
 
-    // Personal deployments use a separate volume. Do not destructively rewrite a clinic-edition
+    // Version 2 deployments use a separate volume. Do not destructively rewrite a clinic-edition
     // database if an operator accidentally points this image at the old volume.
     const userColumns = this.raw.prepare("PRAGMA table_info(users)").all() as Array<{
       name: string;
     }>;
     if (userColumns.some((column) => column.name === "role" || column.name === "vet_verified")) {
       throw new Error(
-        "Clinic-edition database detected. Use the separate petpass_personal_data volume.",
+        "Clinic-edition database detected. Use the separate petpass_v2_data volume.",
       );
     }
     const passportColumns = this.raw.prepare("PRAGMA table_info(passports)").all() as Array<{

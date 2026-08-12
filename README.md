@@ -1,15 +1,15 @@
-# PetPass Personal
+# PetPass
 
-Self-hosted Deno/TypeScript app for keeping personal digital copies of physical EU pet passports. An
-owner creates an account, adds pets, transcribes passport details, and opens a clean emergency view
-for quick reference at a veterinary clinic.
+Self-hosted Deno/TypeScript app for keeping digital copies of physical EU pet passports. An owner
+creates an account, adds pets, transcribes passport details, and opens a clean emergency view for
+quick reference at a veterinary clinic.
 
-> **Not an official document.** PetPass Personal does not issue, replace, validate, or extend a pet
-> passport. Physical booklet remains authoritative and is required for travel and official checks.
+> **Not an official document.** PetPass does not issue, replace, validate, or extend a pet passport.
+> Physical booklet remains authoritative and is required for travel and official checks.
 
-This personal edition lives on `codex/personal-passport`. Clinic-oriented multi-role edition remains
-preserved in release `v1.0.4` and its original branch. Compose project and volume names differ, so
-both editions can coexist without sharing data.
+Version 2 is the current streamlined application. The clinic-oriented multi-role edition remains
+preserved in release `v1.0.4`. Compose project and volume names differ, so both versions can coexist
+without sharing data.
 
 ## Features
 
@@ -40,7 +40,7 @@ Open `http://localhost:8000`, choose **Create one**, then add your details and p
 Apple container:
 
 ```bash
-container build --tag ghcr.io/nehoko/eu-pet-passport:2.0.0-personal.0 .
+container build --tag ghcr.io/nehoko/eu-pet-passport:latest .
 container-compose --file compose.apple.yml up --env-file .env --detach
 ```
 
@@ -52,14 +52,14 @@ APP_ORIGIN=https://pets.example.com
 
 ## Data and backup
 
-Personal edition uses volume `petpass-personal_petpass_personal_data`, separate from clinic edition.
+Version 2 uses volume `petpass-eu-v2_petpass_v2_data`, separate from the v1 clinic edition.
 
 ```bash
 docker compose exec app backup /data/petpass-backup-$(date +%F).db
 docker compose exec app verify-audit
 ```
 
-Database contains personal and animal-health data. Encrypt host disk and off-host backups.
+Database contains private owner and animal-health data. Encrypt host disk and off-host backups.
 
 ## Development
 
@@ -68,7 +68,7 @@ Requires Deno 2.9.4+.
 ```bash
 deno task dev
 deno task ci
-docker build -t petpass-personal:dev .
+docker build -t petpass:dev .
 ```
 
 Endpoints:

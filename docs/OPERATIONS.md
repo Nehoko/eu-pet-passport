@@ -5,10 +5,10 @@
 App listens on 8000. Run one replica. Use TLS reverse proxy and set `APP_ORIGIN` to exact external
 origin. `/data` must be writable by UID/GID 65532; root filesystem can stay read-only.
 
-Personal Compose project and volume:
+Version 2 Compose project and volume:
 
-- project: `petpass-personal`
-- volume: `petpass-personal_petpass_personal_data`
+- project: `petpass-eu-v2`
+- volume: `petpass-eu-v2_petpass_v2_data`
 
 These names intentionally avoid clinic-edition `petpass-eu` data.
 

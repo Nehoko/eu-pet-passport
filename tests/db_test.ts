@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { PetPassDatabase } from "../src/db.ts";
 import { verifyPassword } from "../src/security.ts";
 
-Deno.test("self-service account creates one personal profile", async () => {
+Deno.test("self-service account creates one owner profile", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   try {
@@ -51,7 +51,7 @@ Deno.test("self-service account creates one personal profile", async () => {
   }
 });
 
-Deno.test("personal edition refuses a clinic-edition database", async () => {
+Deno.test("version 2 refuses a clinic-edition database", async () => {
   const directory = await Deno.makeTempDir();
   const path = `${directory}/clinic.db`;
   const legacy = new DatabaseSync(path);
@@ -92,7 +92,7 @@ Deno.test("personal edition refuses a clinic-edition database", async () => {
   }
 });
 
-Deno.test("personal records stay scoped to account owner", async () => {
+Deno.test("records stay scoped to account owner", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   try {

@@ -21,8 +21,8 @@ FROM gcr.io/distroless/cc-debian12:nonroot
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG SOURCE=https://github.com/Nehoko/eu-pet-passport
-LABEL org.opencontainers.image.title="PetPass Personal" \
-      org.opencontainers.image.description="Self-hosted personal digital copies of EU pet passports" \
+LABEL org.opencontainers.image.title="PetPass" \
+      org.opencontainers.image.description="Self-hosted digital copies of EU pet passports" \
       org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.revision="$REVISION" \
       org.opencontainers.image.source="$SOURCE" \

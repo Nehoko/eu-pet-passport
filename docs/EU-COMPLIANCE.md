@@ -2,9 +2,9 @@
 
 Reviewed 12 August 2026.
 
-PetPass Personal is not an EU pet passport system. It stores owner-entered copies for quick
-reference. It does not attest accuracy, issue a document, validate travel eligibility, or replace
-physical booklet.
+PetPass is not an EU pet passport system. It stores owner-entered copies for quick reference. It
+does not attest accuracy, issue a document, validate travel eligibility, or replace physical
+booklet.
 
 ## Copied data
 

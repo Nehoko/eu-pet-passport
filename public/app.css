@@ -827,7 +827,7 @@ dd {
   color: #68591d;
   font-size: .82rem;
 }
-.personal-stats {
+.copy-stats {
   grid-template-columns: repeat(2, 1fr);
 }
 .copy-chip {

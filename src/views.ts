@@ -19,7 +19,7 @@ export function layout(
     : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${
     h(title)
-  } · PetPass</title><meta name="description" content="Personal digital copy of a physical pet passport"><link rel="stylesheet" href="/app.css">${
+  } · PetPass</title><meta name="description" content="Digital copy of a physical pet passport"><link rel="stylesheet" href="/app.css">${
     options.print ? '<link rel="stylesheet" href="/print.css">' : ""
   }${options.print ? '<script src="/print.js" defer></script>' : ""}</head><body class="${
     options.print ? "print-body" : ""
@@ -57,7 +57,7 @@ function euEmblem(): string {
 
 function passportCover(passport?: Passport): string {
   return `<div class="passport-cover large-cover">${euEmblem()}<strong>DIGITAL<br>PET<br>PASSPORT<br>COPY</strong><small>${
-    passport ? `${h(passport.country_code)} ${h(passport.number)}` : "PERSONAL RECORD"
+    passport ? `${h(passport.country_code)} ${h(passport.number)}` : "DIGITAL RECORD"
   }</small></div>`;
 }
 
@@ -67,14 +67,14 @@ export function loginPage(error = ""): string {
     `<section class="login-shell"><div class="login-panel">${passportCover()}
     <div class="login-card"><p class="eyebrow">Your pet records</p><h1>Passport details.<br><em>Ready when needed.</em></h1><p class="lede">Keep a private digital copy of your pet's physical passport for quick reference.</p>${
       error ? alert(error, "error") : ""
-    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="login-help">No account? <a href="/signup">Create one</a></p><p class="legal-note">Personal copy only. Not an official passport and not valid for travel.</p></div></section>`,
+    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="login-help">No account? <a href="/signup">Create one</a></p><p class="legal-note">Digital copy only. Not an official passport and not valid for travel.</p></div></section>`,
   );
 }
 
 export function signupPage(error = ""): string {
   return layout(
     "Create account",
-    `<section class="auth-page"><div class="login-card signup-card"><a class="brand" href="/login"><span class="brand-mark">PP</span><span>PetPass</span></a><p class="eyebrow">Personal account</p><h1>Create your private pet record.</h1><p>Add contact details after signup, then copy information from each physical passport.</p>${
+    `<section class="auth-page"><div class="login-card signup-card"><a class="brand" href="/login"><span class="brand-mark">PP</span><span>PetPass</span></a><p class="eyebrow">Owner account</p><h1>Create your private pet record.</h1><p>Add contact details after signup, then copy information from each physical passport.</p>${
       error ? alert(error, "error") : ""
     }<form method="post" action="/signup" class="form-grid"><label>First name<input name="first_name" required maxlength="100" autocomplete="given-name"></label><label>Last name<input name="last_name" required maxlength="100" autocomplete="family-name"></label><label class="full">Email<input type="email" name="email" required maxlength="200" autocomplete="email"></label><label>Password<input type="password" name="password" required minlength="14" autocomplete="new-password"></label><label>Confirm password<input type="password" name="password_confirmation" required minlength="14" autocomplete="new-password"></label><button class="primary full">Create account</button></form><p class="login-help">Already registered? <a href="/login">Sign in</a></p><p class="legal-note">Passwords need at least 14 characters.</p></div></section>`,
   );
@@ -106,10 +106,10 @@ export function dashboardPage(
     : `<div class="onboarding-alert"><div><strong>Finish your contact details</strong><p>Emergency view needs address and phone information from passport owner section.</p></div><a class="secondary button" href="/profile">Complete details</a></div>`;
   return layout(
     "Home",
-    `${profileNotice}<section class="hero personal-hero"><div><p class="eyebrow">PRIVATE DIGITAL COPY</p><h1>${
+    `${profileNotice}<section class="hero copy-hero"><div><p class="eyebrow">PRIVATE DIGITAL COPY</p><h1>${
       h(user.display_name)
     }, keep pet details<br><em>close at hand.</em></h1><p>Copy information from physical passport. Open a clear emergency view whenever a clinic needs it.</p></div><div class="hero-actions"><a class="primary button" href="/pets/new">Add pet</a><a class="secondary button" href="/passports">View passport copies</a></div></section>
-    <section class="stat-grid personal-stats"><article><span>My pets</span><strong>${counts.pets}</strong><small>saved</small></article><article><span>Passport copies</span><strong>${counts.passports}</strong><small>available</small></article></section>
+    <section class="stat-grid copy-stats"><article><span>My pets</span><strong>${counts.pets}</strong><small>saved</small></article><article><span>Passport copies</span><strong>${counts.passports}</strong><small>available</small></article></section>
     <section class="content-grid"><div class="panel wide"><div class="panel-head"><div><p class="eyebrow">QUICK ACCESS</p><h2>Passport copies</h2></div><a href="/passports">View all</a></div>${rows}</div><aside class="panel standard-note"><p class="eyebrow">IMPORTANT</p><h2>Copy, not replacement</h2><p>Use this app as quick reference in urgent situations. Bring physical passport for travel and official checks.</p></aside></section>`,
     user,
     csrf,
@@ -187,7 +187,7 @@ export function passportsPage(passports: Passport[], hasPets: boolean): string {
         h(passport.id)
       }"><span class="passport-cover">${euEmblem()}<strong>DIGITAL<br>PASSPORT<br>COPY</strong><small>${
         h(passport.country_code)
-      } ${h(passport.number)}</small></span><span><p class="eyebrow">PERSONAL COPY</p><h2>${
+      } ${h(passport.number)}</small></span><span><p class="eyebrow">DIGITAL COPY</p><h2>${
         h(passport.pet_name)
       }</h2><p>${h(passport.species)} · ${
         h(passport.breed)
@@ -214,7 +214,7 @@ export function passportFormPage(
     }</option>`
   ).join("");
   return `<div class="page-head"><div><p class="eyebrow">STEP 2</p><h1>Add passport copy</h1><p>Enter identifying numbers exactly as printed in physical booklet.</p></div></div>${
-    alert("Personal digital copy only — not an official passport or travel document.")
+    alert("Digital copy only — not an official passport or travel document.")
   }<section class="panel form-panel"><form method="post" action="/passports" class="form-grid">${
     csrfInput(csrf)
   }<label class="full">Pet<select name="pet_id" required><option value="">Select pet</option>${options}</select></label><label>Issuing country code<input name="country_code" value="${
@@ -259,7 +259,7 @@ export function passportDetailPage(
         h(id.code)
       }</strong><small>${h(displayDate(id.marked_on))} · ${h(id.location)}</small></div>`
     ).join("") || '<div class="empty">No identification copied yet.</div>';
-  return `<div class="page-head"><div><p class="eyebrow">PERSONAL DIGITAL COPY</p><h1>${
+  return `<div class="page-head"><div><p class="eyebrow">DIGITAL COPY</p><h1>${
     h(passport.pet_name)
   }</h1><p>${h(passport.country_code)} ${
     h(passport.number)
@@ -323,7 +323,7 @@ export function emergencyPage(
     ).join("") || "<p>No identification saved.</p>";
   return layout(
     `${passport.pet_name} emergency record`,
-    `<div class="print-toolbar"><button id="print-button">Print / save PDF</button><p>Single-page personal reference.</p></div><section class="emergency-sheet"><header><div><p>PERSONAL DIGITAL COPY</p><h1>${
+    `<div class="print-toolbar"><button id="print-button">Print / save PDF</button><p>Single-page emergency reference.</p></div><section class="emergency-sheet"><header><div><p>DIGITAL COPY</p><h1>${
       h(passport.pet_name)
     }</h1><strong>${h(passport.country_code)} ${
       h(passport.number)

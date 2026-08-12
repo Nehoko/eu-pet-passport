@@ -1,4 +1,4 @@
-# Personal-edition product plan
+# Version 2 product plan
 
 ## Goal
 
@@ -7,7 +7,7 @@ urgent veterinary care. App stores owner-entered copies only; it makes no legal 
 
 ## Core journey
 
-1. Anyone creates personal account.
+1. Anyone creates an account.
 2. Account owner completes contact details.
 3. Owner adds one or more pets.
 4. Owner creates one or more passport copies for owned pets.
@@ -50,5 +50,5 @@ non-root container, Deno tests, GitHub Actions.
 - Signup-to-emergency-view flow works through browser UI.
 - Account A never sees or changes account B records.
 - UI renders only usable actions.
-- All views state personal copy is not official.
+- All views state the digital copy is not official.
 - Restart preserves sessions and records; backup and audit verification pass.

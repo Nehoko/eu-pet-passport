@@ -25,7 +25,7 @@ async function sessionFromCookie(database: PetPassDatabase, cookie: string) {
   return database.getSession(await sha256(token))!;
 }
 
-Deno.test("personal edition covers signup, profile, pet, passport, and isolation", async () => {
+Deno.test("app covers signup, profile, pet, passport, and isolation", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   const config: AppConfig = {
@@ -41,7 +41,7 @@ Deno.test("personal edition covers signup, profile, pet, passport, and isolation
 
     const loginHtml = await (await app(request("/login"))).text();
     assert.match(loginHtml, /Create one/);
-    assert.match(loginHtml, /Personal copy only/);
+    assert.match(loginHtml, /Digital copy only/);
     assert.equal(loginHtml.match(/class="eu-star"/g)?.length, 12);
     assert.doesNotMatch(loginHtml, /administrator|veterinarian|auditor/i);
     assert.equal((await app(request("/api/v1/passports/missing"))).status, 401);
