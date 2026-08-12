@@ -3,7 +3,7 @@ name: petpass-personal
 services:
   app:
     # container-compose does not expand variables inside image references.
-    image: ghcr.io/nehoko/eu-pet-passport:personal
+    image: ghcr.io/nehoko/eu-pet-passport:2.0.0-personal.0
     user: "65532:65532"
     read_only: true
     ports:

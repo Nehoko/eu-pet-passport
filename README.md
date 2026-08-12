@@ -40,11 +40,9 @@ Open `http://localhost:8000`, choose **Create one**, then add your details and p
 Apple container:
 
 ```bash
-container build --tag ghcr.io/nehoko/eu-pet-passport:personal .
+container build --tag ghcr.io/nehoko/eu-pet-passport:2.0.0-personal.0 .
 container-compose --file compose.apple.yml up --env-file .env --detach
 ```
-
-Until `personal` image is published, Apple deployment uses locally built tag above.
 
 For internet exposure, use TLS reverse proxy and exact origin:
 
