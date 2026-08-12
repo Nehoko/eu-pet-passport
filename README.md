@@ -39,6 +39,10 @@ docker compose up -d
 Open `http://localhost:8000`. Sign in with `APP_ADMIN_EMAIL` and password stored in
 `secrets/admin_password.txt`.
 
+`APP_ADMIN_EMAIL` and `APP_ADMIN_PASSWORD` bootstrap only an empty database. To recover an existing
+administrator without deleting data, stop the app and use the audited offline `admin-reset` command;
+see [operations guide](docs/OPERATIONS.md#administrator-password-recovery).
+
 For internet exposure, put app behind TLS reverse proxy and set exact public origin:
 
 ```dotenv
@@ -81,6 +85,10 @@ Health endpoints:
 - `GET /health/ready` - database readiness and model version.
 
 Authenticated JSON snapshot: `GET /api/v1/passports/:id`.
+
+Owner contact records and Owner login accounts are separate. Create the contact under **Owners**
+first, then provision an Owner login with the exact same email under **Users**. This email link
+limits the account to that owner's pets and passports.
 
 ## Project documents
 

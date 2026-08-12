@@ -131,11 +131,11 @@ jobs:
             "Digest: ${{ steps.image.outputs.digest }}" \
             "Pull: docker pull ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}" \
             > container.txt
-          sha256sum compose.yml petpass.env.example container.txt > SHA256SUMS
+          sha256sum compose.yml compose.apple.yml petpass.env.example container.txt > SHA256SUMS
       - name: Upload assets to published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           gh release upload "$RELEASE_TAG" --clobber \
-            compose.yml petpass.env.example container.txt SHA256SUMS
+            compose.yml compose.apple.yml petpass.env.example container.txt SHA256SUMS

@@ -14,6 +14,41 @@ if (Deno.args[0] === "healthcheck") {
 }
 
 const config = await loadConfig();
+
+if (Deno.args[0] === "admin-reset") {
+  const email = Deno.args[1]?.trim().toLowerCase();
+  if (Deno.args.length !== 2 || !email || !email.includes("@")) {
+    console.error("Usage: petpass admin-reset <existing-admin-email>");
+    Deno.exit(64);
+  }
+  if (!config.adminPassword) {
+    console.error("APP_ADMIN_PASSWORD or APP_ADMIN_PASSWORD_FILE is required");
+    Deno.exit(78);
+  }
+  try {
+    const stat = await Deno.stat(config.dbPath);
+    if (!stat.isFile) throw new Error("database path is not a file");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Cannot open existing database at ${config.dbPath}: ${message}`);
+    Deno.exit(66);
+  }
+  const resetDatabase = new PetPassDatabase(config.dbPath);
+  try {
+    const result = resetDatabase.resetAdminPassword(email, config.adminPassword);
+    console.log(
+      `Password reset for ${result.email}; revoked ${result.sessionsRevoked} session(s).`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Admin reset failed: ${message}`);
+    Deno.exitCode = 1;
+  } finally {
+    resetDatabase.close();
+  }
+  Deno.exit(Deno.exitCode ?? 0);
+}
+
 const slash = config.dbPath.lastIndexOf("/");
 if (slash > 0) await Deno.mkdir(config.dbPath.slice(0, slash), { recursive: true });
 

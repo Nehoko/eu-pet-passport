@@ -1,0 +1,30 @@
+name: petpass-eu
+
+services:
+  app:
+    # container-compose does not expand variables inside image references.
+    image: ghcr.io/nehoko/eu-pet-passport:1.0.4
+    user: "65532:65532"
+    read_only: true
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      APP_DB_PATH: /data/petpass.db
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8000}
+      APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@example.com}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD}
+      APP_MEMBER_STATE: ${APP_MEMBER_STATE:-Germany}
+      APP_COUNTRY_CODE: ${APP_COUNTRY_CODE:-DE}
+    volumes:
+      - petpass_data:/data
+    healthcheck:
+      test: ["CMD", "/app/petpass", "healthcheck", "http://127.0.0.1:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  petpass_data:

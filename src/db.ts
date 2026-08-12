@@ -292,6 +292,31 @@ export class PetPassDatabase {
     ).all() as unknown as User[];
   }
 
+  resetAdminPassword(email: string, password: string): { email: string; sessionsRevoked: number } {
+    const admin = this.getUserAuth(email);
+    if (!admin || admin.role !== "admin" || admin.status !== "active") {
+      throw new Error("Active administrator account not found");
+    }
+    const digest = hashPassword(password);
+    const sessions = this.raw.prepare(
+      "SELECT count(*) AS total FROM sessions WHERE user_id = ?",
+    ).get(admin.id) as { total: number };
+    this.transaction(() => {
+      this.raw.prepare(`
+        UPDATE users
+        SET password_salt = ?, password_hash = ?, password_iterations = ?, updated_at = ?
+        WHERE id = ?
+      `).run(digest.salt, digest.hash, digest.iterations, now(), admin.id);
+      this.raw.prepare("DELETE FROM sessions WHERE user_id = ?").run(admin.id);
+      this.audit(null, "admin.password_reset", "user", admin.id, {
+        email: admin.email,
+        sessionsRevoked: sessions.total,
+        method: "offline-cli",
+      });
+    });
+    return { email: admin.email, sessionsRevoked: sessions.total };
+  }
+
   createSession(userId: string, tokenDigest: string, csrf: string): void {
     const timestamp = now();
     this.raw.prepare(`
@@ -373,6 +398,12 @@ export class PetPassDatabase {
   listOwners(): Owner[] {
     return this.raw.prepare("SELECT * FROM owners ORDER BY last_name, first_name")
       .all() as unknown as Owner[];
+  }
+
+  getOwnerByEmail(email: string): Owner | undefined {
+    return this.raw.prepare(
+      "SELECT * FROM owners WHERE lower(email) = lower(?) ORDER BY created_at LIMIT 1",
+    ).get(email) as Owner | undefined;
   }
 
   getOwner(id: string): Owner | undefined {
