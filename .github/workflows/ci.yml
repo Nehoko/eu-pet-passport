@@ -39,6 +39,8 @@ jobs:
           printf '%s\n' 'ci-password-long-enough' > secrets/admin_password.txt
           cp .env.example .env
           docker compose config --quiet
+          APP_ADMIN_PASSWORD=ci-password-long-enough \
+            docker compose --file compose.apple.yml config --quiet
 
   container:
     runs-on: ubuntu-24.04

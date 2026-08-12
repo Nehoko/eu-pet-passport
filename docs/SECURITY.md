@@ -24,6 +24,8 @@ reverse proxy.
 - Security headers: CSP, frame deny, no sniff, no referrer, limited permissions.
 - Signed health records are append-only. Physical issue locks core identity in application flow.
 - Mutation audit hash chain exposes deletion/reordering/modification during verification.
+- Offline admin recovery requires an existing active admin, reuses the password policy, revokes all
+  sessions, and records a system-authored audit event without storing the password.
 - Container: distroless, non-root, read-only root, dropped capabilities, no-new-privileges.
 
 ## Operator duties
@@ -43,7 +45,7 @@ reverse proxy.
 - Audit chain is tamper-evident, not externally anchored.
 - Login throttle resets on restart and is process-local.
 - No MFA/WebAuthn yet.
-- No user self-service password change/recovery yet.
+- No user self-service password change/recovery yet; only offline administrator recovery exists.
 - Admin account can perform veterinarian-like writes; use separate verified vet accounts
   operationally.
 - Compromise of server process can read live records and sessions.

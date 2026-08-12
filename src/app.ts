@@ -478,8 +478,14 @@ export function createApp(
         if (!["admin", "veterinarian", "owner", "auditor"].includes(role)) {
           throw new ValidationError("Invalid role");
         }
+        const email = required(data.get("email"), "Email", 200);
+        if (role === "owner" && !database.getOwnerByEmail(email)) {
+          throw new ValidationError(
+            "Create an Owner contact with this exact email before creating its login account",
+          );
+        }
         database.createUser(user.id, {
-          email: required(data.get("email"), "Email", 200),
+          email,
           displayName: required(data.get("display_name"), "Display name", 100),
           password: required(data.get("password"), "Password", 1000),
           role,

@@ -77,6 +77,20 @@ Deno.test("HTTP integration covers auth, CSRF, RBAC, and core forms", async () =
     assert.equal(dashboard.status, 200);
     assert.match(await dashboard.text(), /Good records make/);
 
+    const emptyPetForm = await app(request("/pets/new", "GET", undefined, cookie));
+    assert.equal(emptyPetForm.status, 200);
+    assert.match(await emptyPetForm.text(), /No Owner contact records exist/);
+
+    const ownerLoginWithoutContact = await app(request("/admin/users", "POST", {
+      csrf: session.csrf,
+      display_name: "Missing Contact",
+      email: "missing-contact@example.test",
+      password: "owner-password-long-enough",
+      role: "owner",
+    }, cookie));
+    assert.equal(ownerLoginWithoutContact.status, 400);
+    assert.match(await ownerLoginWithoutContact.text(), /Create an Owner contact/);
+
     const rejected = await app(request("/owners", "POST", {
       first_name: "Ada",
       last_name: "Owner",
@@ -96,6 +110,15 @@ Deno.test("HTTP integration covers auth, CSRF, RBAC, and core forms", async () =
     }, cookie));
     assert.equal(owner.status, 303);
     const ownerId = database.listOwners()[0].id;
+
+    const ownerAccount = await app(request("/admin/users", "POST", {
+      csrf: session.csrf,
+      display_name: "Ada Owner",
+      email: "ada@example.test",
+      password: "owner-password-long-enough",
+      role: "owner",
+    }, cookie));
+    assert.equal(ownerAccount.status, 303);
 
     const pet = await app(request("/pets", "POST", {
       csrf: session.csrf,
@@ -128,15 +151,8 @@ Deno.test("HTTP integration covers auth, CSRF, RBAC, and core forms", async () =
     assert.match(printHtml, /NOT VALID AS ORIGINAL PASSPORT/);
     assert.equal(printHtml.match(/class="eu-star"/g)?.length, 12);
 
-    database.createUser(database.getUserAuth(config.adminEmail)!.id, {
-      email: "owner@example.test",
-      displayName: "Owner User",
-      password: "owner-password-long-enough",
-      role: "owner",
-      vetVerified: false,
-    });
     const ownerLogin = await app(request("/login", "POST", {
-      email: "owner@example.test",
+      email: "ada@example.test",
       password: "owner-password-long-enough",
     }));
     const ownerCookie = ownerLogin.headers.get("set-cookie")!.split(";")[0];

@@ -375,6 +375,17 @@ code {
   text-align: center;
   color: var(--muted);
 }
+.empty-state {
+  max-width: 680px;
+  margin: 0 auto;
+  text-align: center;
+}
+.empty-state p {
+  color: var(--muted);
+}
+.empty-state .button {
+  display: inline-flex;
+}
 
 .page-head {
   margin: 8px 0 32px;

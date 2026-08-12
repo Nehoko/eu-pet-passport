@@ -110,7 +110,7 @@ export function ownersPage(owners: Owner[], csrf: string, error = ""): string {
     ).join("") || '<tr><td colspan="3" class="empty">No owners yet.</td></tr>';
   return `<div class="page-head"><div><p class="eyebrow">SECTION I</p><h1>Owners</h1><p>Contact profiles linked to pet records.</p></div></div>${
     error ? alert(error, "error") : ""
-  }<section class="split"><div class="panel"><table><thead><tr><th>Owner</th><th>Location</th><th>Phone</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="panel"><h2>Add owner</h2><form method="post" action="/owners" class="form-grid">${
+  }<section class="split"><div class="panel"><table><thead><tr><th>Owner contact</th><th>Location</th><th>Phone</th></tr></thead><tbody>${rows}</tbody></table><p class="legal-note">These contact records appear when registering a pet. An Owner login is separate and links to records by exact email.</p></div><aside class="panel"><h2>Add owner contact</h2><form method="post" action="/owners" class="form-grid">${
     csrfInput(csrf)
   }<label>First name<input name="first_name" required maxlength="100"></label><label>Last name<input name="last_name" required maxlength="100"></label><label class="full">Address<input name="address" required maxlength="200"></label><label>Postcode<input name="postal_code" required maxlength="30"></label><label>City<input name="city" required maxlength="100"></label><label>Country<input name="country" required maxlength="100"></label><label>Phone<input name="phone" maxlength="50"></label><label class="full">Email<input type="email" name="email" required maxlength="200"></label><button class="primary full">Save owner</button></form></aside></section>`;
 }
@@ -128,6 +128,14 @@ export function petsPage(pets: Pet[]): string {
 }
 
 export function petFormPage(owners: Owner[], csrf: string, error = ""): string {
+  if (!owners.length) {
+    return `<div class="page-head"><div><p class="eyebrow">SECTION II</p><h1>Register pet</h1><p>Identity details stated by owner.</p></div></div>${
+      alert(
+        "No Owner contact records exist. Owner login accounts do not appear here because passport contact details are required.",
+        "error",
+      )
+    }<section class="panel empty-state"><h2>Create an owner contact first</h2><p>Add the owner's address and contact details, then return to register the pet.</p><a class="primary button" href="/owners">Go to Owners</a></section>`;
+  }
   const options = owners.map((owner) =>
     `<option value="${h(owner.id)}">${h(owner.first_name)} ${h(owner.last_name)} · ${
       h(owner.email)
@@ -326,9 +334,9 @@ export function usersPage(users: User[], csrf: string, error = ""): string {
   ).join("");
   return `<div class="page-head"><div><p class="eyebrow">ACCESS CONTROL</p><h1>Users</h1><p>No public signup. Admin grants least-privilege roles.</p></div></div>${
     error ? alert(error, "error") : ""
-  }<section class="split"><div class="panel"><table><thead><tr><th>User</th><th>Role</th><th>Vet authority</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="panel"><h2>Create user</h2><form method="post" action="/admin/users" class="stack">${
+  }<section class="split"><div class="panel"><table><thead><tr><th>Login account</th><th>Role</th><th>Vet authority</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="panel"><h2>Create login account</h2><form method="post" action="/admin/users" class="stack">${
     csrfInput(csrf)
-  }<label>Name<input name="display_name" required maxlength="100"></label><label>Email<input type="email" name="email" required maxlength="200"></label><label>Temporary password<input type="password" name="password" required minlength="14" autocomplete="new-password"></label><label>Role<select name="role"><option value="owner">Owner</option><option value="veterinarian">Veterinarian</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select></label><label class="check-label"><input type="checkbox" name="vet_verified" value="1"> Authority-verified veterinarian</label><button class="primary">Create account</button></form></aside></section>`;
+  }<label>Name<input name="display_name" required maxlength="100"></label><label>Email<input type="email" name="email" required maxlength="200"></label><label>Temporary password<input type="password" name="password" required minlength="14" autocomplete="new-password"></label><label>Role<select name="role"><option value="owner">Owner login</option><option value="veterinarian">Veterinarian</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select></label><p class="legal-note"><strong>Owner login:</strong> first create an Owner contact with the exact same email. This account then sees that contact's pets and passports.</p><label class="check-label"><input type="checkbox" name="vet_verified" value="1"> Authority-verified veterinarian</label><button class="primary">Create account</button></form></aside></section>`;
 }
 
 export function auditPage(events: Array<Record<string, unknown>>, chainOk: boolean): string {
