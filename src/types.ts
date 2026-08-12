@@ -1,4 +1,3 @@
-export type Role = "admin" | "veterinarian" | "owner" | "auditor";
 export type Species = "dog" | "cat" | "ferret";
 export type RecordType =
   | "rabies"
@@ -14,9 +13,7 @@ export interface User {
   id: string;
   email: string;
   display_name: string;
-  role: Role;
   status: "active" | "disabled";
-  vet_verified: number;
 }
 
 export interface Owner {
@@ -55,6 +52,8 @@ export interface Passport {
   model_version: string;
   status: "draft" | "recorded" | "void";
   issuing_vet_id: string | null;
+  issuing_vet_name_copy: string;
+  issued_on_copy: string | null;
   issued_at: string | null;
   void_reason: string | null;
   created_at: string;

@@ -783,6 +783,78 @@ dd {
   text-align: center;
 }
 
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: radial-gradient(circle at 15% 15%, #184cc7 0, #07196e 36%, #050c38 100%);
+}
+.signup-card {
+  width: min(720px, 100%);
+}
+.signup-card .brand {
+  width: max-content;
+  margin-bottom: 2rem;
+}
+.login-shell .large-cover {
+  width: min(320px, 100%);
+  justify-self: center;
+  padding: 34px;
+  border-radius: 8px 8px 22px 22px;
+  transform: rotate(-2deg);
+}
+.login-shell .large-cover .eu-emblem {
+  width: 86px;
+  height: 86px;
+}
+.login-shell .large-cover strong {
+  font-size: clamp(1.5rem, 3vw, 2.4rem);
+}
+.onboarding-alert {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 18px 20px;
+  border: 1px solid #f0d375;
+  border-radius: 14px;
+  background: #fff8d8;
+}
+.onboarding-alert p {
+  margin: .25rem 0 0;
+  color: #68591d;
+  font-size: .82rem;
+}
+.personal-stats {
+  grid-template-columns: repeat(2, 1fr);
+}
+.copy-chip {
+  display: inline-flex;
+  width: max-content;
+  padding: .3rem .55rem;
+  border-radius: 999px;
+  color: #075f48;
+  background: #e1f6ee;
+  font-size: .68rem;
+  font-weight: 800;
+}
+.simple-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+details.panel > summary {
+  cursor: pointer;
+  color: var(--blue);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+details.panel[open] > summary {
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 900px) {
   .topbar {
     padding: 12px 20px;
@@ -812,7 +884,8 @@ dd {
     grid-template-columns: repeat(2, 1fr);
   }
   .content-grid,
-  .split {
+  .split,
+  .simple-entry-grid {
     grid-template-columns: 1fr;
   }
   .card-grid {
@@ -840,7 +913,8 @@ dd {
   .hero-actions,
   .page-head,
   .panel-head,
-  .record-issue {
+  .record-issue,
+  .onboarding-alert {
     align-items: stretch;
     flex-direction: column;
   }

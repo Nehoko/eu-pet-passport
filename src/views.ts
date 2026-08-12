@@ -1,4 +1,4 @@
-import { displayDate, type ReadinessResult } from "./domain.ts";
+import { displayDate } from "./domain.ts";
 import { escapeHtml as h } from "./security.ts";
 import type { Identification, MedicalRecord, Owner, Passport, Pet, User } from "./types.ts";
 
@@ -11,20 +11,15 @@ export function layout(
 ): string {
   const nav = user
     ? `<header class="topbar"><a class="brand" href="/"><span class="brand-mark">PP</span><span>PetPass</span></a>
-        <nav><a href="/">Overview</a><a href="/pets">Pets</a><a href="/passports">Passports</a>${
-      user.role !== "owner" ? '<a href="/owners">Owners</a>' : ""
-    }${user.role === "admin" ? '<a href="/admin/users">Users</a>' : ""}${
-      ["admin", "auditor"].includes(user.role) ? '<a href="/audit">Audit</a>' : ""
-    }</nav><div class="account"><span>${h(user.display_name)}</span><span class="role">${
-      h(user.role)
-    }</span>
+        <nav><a href="/">Home</a><a href="/pets">My pets</a><a href="/passports">Passport copies</a><a href="/profile">My details</a></nav>
+        <div class="account"><span>${h(user.display_name)}</span>
         <form method="post" action="/logout"><input type="hidden" name="csrf" value="${
       h(csrf)
     }"><button class="link-button">Sign out</button></form></div></header>`
     : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${
     h(title)
-  } · PetPass</title><meta name="description" content="Secure EU pet passport companion record"><link rel="stylesheet" href="/app.css">${
+  } · PetPass</title><meta name="description" content="Personal digital copy of a physical pet passport"><link rel="stylesheet" href="/app.css">${
     options.print ? '<link rel="stylesheet" href="/print.css">' : ""
   }${options.print ? '<script src="/print.js" defer></script>' : ""}</head><body class="${
     options.print ? "print-body" : ""
@@ -60,59 +55,89 @@ function euEmblem(): string {
   return `<svg class="eu-emblem" viewBox="0 0 100 100" role="img" aria-label="European Union emblem">${euStars}</svg>`;
 }
 
+function passportCover(passport?: Passport): string {
+  return `<div class="passport-cover large-cover">${euEmblem()}<strong>DIGITAL<br>PET<br>PASSPORT<br>COPY</strong><small>${
+    passport ? `${h(passport.country_code)} ${h(passport.number)}` : "PERSONAL RECORD"
+  }</small></div>`;
+}
+
 export function loginPage(error = ""): string {
   return layout(
     "Sign in",
-    `<section class="login-shell"><div class="login-panel"><div class="passport-mini">${euEmblem()}<strong>EU PET<br>PASSPORT</strong><small>COMPANION RECORD</small></div>
-    <div class="login-card"><p class="eyebrow">Secure clinic workspace</p><h1>Pet travel records.<br><em>Ready when you are.</em></h1><p class="lede">Manage 2026 EU-model passport data, vet attestations, and travel checks.</p>${
+    `<section class="login-shell"><div class="login-panel">${passportCover()}
+    <div class="login-card"><p class="eyebrow">Your pet records</p><h1>Passport details.<br><em>Ready when needed.</em></h1><p class="lede">Keep a private digital copy of your pet's physical passport for quick reference.</p>${
       error ? alert(error, "error") : ""
-    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="login-help"><strong>First sign-in?</strong> Use the administrator email and password configured with <code>APP_ADMIN_EMAIL</code> and <code>APP_ADMIN_PASSWORD</code>. There is no public signup.</p><p class="legal-note">Digital companion record only. Not a substitute for an authorised physical passport.</p></div></section>`,
+    }<form method="post" action="/login" class="stack"><label>Email<input type="email" name="email" autocomplete="username" required autofocus></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><p class="login-help">No account? <a href="/signup">Create one</a></p><p class="legal-note">Personal copy only. Not an official passport and not valid for travel.</p></div></section>`,
   );
+}
+
+export function signupPage(error = ""): string {
+  return layout(
+    "Create account",
+    `<section class="auth-page"><div class="login-card signup-card"><a class="brand" href="/login"><span class="brand-mark">PP</span><span>PetPass</span></a><p class="eyebrow">Personal account</p><h1>Create your private pet record.</h1><p>Add contact details after signup, then copy information from each physical passport.</p>${
+      error ? alert(error, "error") : ""
+    }<form method="post" action="/signup" class="form-grid"><label>First name<input name="first_name" required maxlength="100" autocomplete="given-name"></label><label>Last name<input name="last_name" required maxlength="100" autocomplete="family-name"></label><label class="full">Email<input type="email" name="email" required maxlength="200" autocomplete="email"></label><label>Password<input type="password" name="password" required minlength="14" autocomplete="new-password"></label><label>Confirm password<input type="password" name="password_confirmation" required minlength="14" autocomplete="new-password"></label><button class="primary full">Create account</button></form><p class="login-help">Already registered? <a href="/login">Sign in</a></p><p class="legal-note">Passwords need at least 14 characters.</p></div></section>`,
+  );
+}
+
+function profileComplete(owner: Owner): boolean {
+  return Boolean(owner.address && owner.postal_code && owner.city && owner.country);
 }
 
 export function dashboardPage(
   user: User,
+  owner: Owner,
   counts: ReturnType<import("./db.ts").PetPassDatabase["getCounts"]>,
   passports: Passport[],
   csrf: string,
 ): string {
-  const rows = passports.slice(0, 5).map((passport) => `
-    <a class="list-row" href="/passports/${h(passport.id)}"><span class="pet-avatar">${
-    h(passport.pet_name[0])
-  }</span><span><strong>${h(passport.pet_name)}</strong><small>${h(passport.species)} · ${
-    h(passport.owner_name)
-  }</small></span><span class="passport-no">${h(passport.country_code)} ${
-    h(passport.number)
-  }</span><span class="status ${h(passport.status)}">${h(passport.status)}</span></a>`).join("") ||
-    '<div class="empty">No passport records yet.</div>';
+  const rows =
+    passports.slice(0, 4).map((passport) =>
+      `<a class="list-row" href="/passports/${h(passport.id)}"><span class="pet-avatar">${
+        h(passport.pet_name[0])
+      }</span><span><strong>${h(passport.pet_name)}</strong><small>${
+        h(passport.species)
+      }</small></span><span class="passport-no">${h(passport.country_code)} ${
+        h(passport.number)
+      }</span><span class="arrow">→</span></a>`
+    ).join("") || '<div class="empty">No passport copies yet.</div>';
+  const profileNotice = profileComplete(owner)
+    ? ""
+    : `<div class="onboarding-alert"><div><strong>Finish your contact details</strong><p>Emergency view needs address and phone information from passport owner section.</p></div><a class="secondary button" href="/profile">Complete details</a></div>`;
   return layout(
-    "Overview",
-    `<section class="hero"><div><p class="eyebrow">EU 2026 MODEL · SECURE RECORD</p><h1>Good records make<br><em>smooth crossings.</em></h1><p>One place for identity, vaccination, treatment, and physical booklet records.</p></div><div class="hero-actions">${
-      user.role === "admin" || user.role === "veterinarian"
-        ? '<a class="primary button" href="/passports/new">Add passport record</a><a class="secondary button" href="/pets/new">Register pet</a>'
-        : '<a class="primary button" href="/passports">View my records</a>'
-    }</div></section>
-    <section class="stat-grid"><article><span>Pets</span><strong>${counts.pets}</strong><small>registered</small></article><article><span>Passport records</span><strong>${counts.passports}</strong><small>current workspace</small></article><article><span>Owners</span><strong>${counts.owners}</strong><small>linked profiles</small></article><article class="attention"><span>Drafts</span><strong>${counts.due}</strong><small>need completion</small></article></section>
-    <section class="content-grid"><div class="panel wide"><div class="panel-head"><div><p class="eyebrow">RECENT ACTIVITY</p><h2>Passport records</h2></div><a href="/passports">View all</a></div>${rows}</div><aside class="panel standard-note"><p class="eyebrow">CURRENT STANDARD</p><h2>Regulation 2026/705</h2><p>Model effective since 22 April 2026. Strict Sections I-XII sequence. Physical booklet remains source of legal truth.</p><span class="model-chip">100 × 152 mm</span><span class="model-chip">EU bilingual model</span></aside></section>`,
+    "Home",
+    `${profileNotice}<section class="hero personal-hero"><div><p class="eyebrow">PRIVATE DIGITAL COPY</p><h1>${
+      h(user.display_name)
+    }, keep pet details<br><em>close at hand.</em></h1><p>Copy information from physical passport. Open a clear emergency view whenever a clinic needs it.</p></div><div class="hero-actions"><a class="primary button" href="/pets/new">Add pet</a><a class="secondary button" href="/passports">View passport copies</a></div></section>
+    <section class="stat-grid personal-stats"><article><span>My pets</span><strong>${counts.pets}</strong><small>saved</small></article><article><span>Passport copies</span><strong>${counts.passports}</strong><small>available</small></article></section>
+    <section class="content-grid"><div class="panel wide"><div class="panel-head"><div><p class="eyebrow">QUICK ACCESS</p><h2>Passport copies</h2></div><a href="/passports">View all</a></div>${rows}</div><aside class="panel standard-note"><p class="eyebrow">IMPORTANT</p><h2>Copy, not replacement</h2><p>Use this app as quick reference in urgent situations. Bring physical passport for travel and official checks.</p></aside></section>`,
     user,
     csrf,
   );
 }
 
-export function ownersPage(owners: Owner[], csrf: string, error = ""): string {
-  const rows =
-    owners.map((owner) =>
-      `<tr><td><strong>${h(owner.first_name)} ${h(owner.last_name)}</strong><small>${
-        h(owner.email)
-      }</small></td><td>${h(owner.city)}, ${h(owner.country)}</td><td>${
-        h(owner.phone || "—")
-      }</td></tr>`
-    ).join("") || '<tr><td colspan="3" class="empty">No owners yet.</td></tr>';
-  return `<div class="page-head"><div><p class="eyebrow">SECTION I</p><h1>Owners</h1><p>Contact profiles linked to pet records.</p></div></div>${
-    error ? alert(error, "error") : ""
-  }<section class="split"><div class="panel"><table><thead><tr><th>Owner contact</th><th>Location</th><th>Phone</th></tr></thead><tbody>${rows}</tbody></table><p class="legal-note">These contact records appear when registering a pet. An Owner login is separate and links to records by exact email.</p></div><aside class="panel"><h2>Add owner contact</h2><form method="post" action="/owners" class="form-grid">${
+export function profilePage(owner: Owner, csrf: string, saved = false): string {
+  return `<div class="page-head"><div><p class="eyebrow">PASSPORT OWNER</p><h1>My details</h1><p>Keep these details equal to physical passport.</p></div></div>${
+    saved ? alert("Your details were saved.", "success") : ""
+  }<section class="panel form-panel"><form method="post" action="/profile" class="form-grid">${
     csrfInput(csrf)
-  }<label>First name<input name="first_name" required maxlength="100"></label><label>Last name<input name="last_name" required maxlength="100"></label><label class="full">Address<input name="address" required maxlength="200"></label><label>Postcode<input name="postal_code" required maxlength="30"></label><label>City<input name="city" required maxlength="100"></label><label>Country<input name="country" required maxlength="100"></label><label>Phone<input name="phone" maxlength="50"></label><label class="full">Email<input type="email" name="email" required maxlength="200"></label><button class="primary full">Save owner</button></form></aside></section>`;
+  }<label>First name<input name="first_name" required maxlength="100" value="${
+    h(owner.first_name)
+  }"></label><label>Last name<input name="last_name" required maxlength="100" value="${
+    h(owner.last_name)
+  }"></label><label class="full">Address<input name="address" required maxlength="200" value="${
+    h(owner.address)
+  }"></label><label>Postcode<input name="postal_code" required maxlength="30" value="${
+    h(owner.postal_code)
+  }"></label><label>City<input name="city" required maxlength="100" value="${
+    h(owner.city)
+  }"></label><label>Country<input name="country" required maxlength="100" value="${
+    h(owner.country)
+  }"></label><label>Phone<input name="phone" maxlength="50" value="${
+    h(owner.phone)
+  }"></label><label class="full">Account email<input type="email" value="${
+    h(owner.email)
+  }" disabled></label><button class="primary full">Save my details</button></form></section>`;
 }
 
 export function petsPage(pets: Pet[]): string {
@@ -122,30 +147,15 @@ export function petsPage(pets: Pet[]): string {
         h(pet.name[0])
       }</span><span><strong>${h(pet.name)}</strong><small>${h(pet.breed)} ${
         h(pet.species)
-      }</small><em>${h(pet.owner_name)}</em></span><span class="arrow">→</span></a>`
-    ).join("") || '<div class="empty panel">No pets registered.</div>';
-  return `<div class="page-head"><div><p class="eyebrow">ANIMAL REGISTER</p><h1>Pets</h1><p>Dogs, cats, and ferrets in this workspace.</p></div><a class="primary button" href="/pets/new">Register pet</a></div><section class="card-grid">${cards}</section>`;
+      }</small></span><span class="arrow">→</span></a>`
+    ).join("") || '<div class="empty panel">No pets yet. Add your first pet.</div>';
+  return `<div class="page-head"><div><p class="eyebrow">MY PETS</p><h1>Pets</h1><p>Animals whose passport copies you keep here.</p></div><a class="primary button" href="/pets/new">Add pet</a></div><section class="card-grid">${cards}</section>`;
 }
 
-export function petFormPage(owners: Owner[], csrf: string, error = ""): string {
-  if (!owners.length) {
-    return `<div class="page-head"><div><p class="eyebrow">SECTION II</p><h1>Register pet</h1><p>Identity details stated by owner.</p></div></div>${
-      alert(
-        "No Owner contact records exist. Owner login accounts do not appear here because passport contact details are required.",
-        "error",
-      )
-    }<section class="panel empty-state"><h2>Create an owner contact first</h2><p>Add the owner's address and contact details, then return to register the pet.</p><a class="primary button" href="/owners">Go to Owners</a></section>`;
-  }
-  const options = owners.map((owner) =>
-    `<option value="${h(owner.id)}">${h(owner.first_name)} ${h(owner.last_name)} · ${
-      h(owner.email)
-    }</option>`
-  ).join("");
-  return `<div class="page-head"><div><p class="eyebrow">SECTION II</p><h1>Register pet</h1><p>Identity details stated by owner.</p></div></div>${
-    error ? alert(error, "error") : ""
-  }<section class="panel form-panel"><form method="post" action="/pets" class="form-grid">${
+export function petFormPage(csrf: string): string {
+  return `<div class="page-head"><div><p class="eyebrow">STEP 1</p><h1>Add pet</h1><p>Copy animal description from physical passport.</p></div></div><section class="panel form-panel"><form method="post" action="/pets" class="form-grid">${
     csrfInput(csrf)
-  }<label class="full">Owner<select name="owner_id" required><option value="">Select owner</option>${options}</select></label><label>Name<input name="name" required maxlength="100"></label><label>Species<select name="species" required><option value="dog">Dog</option><option value="cat">Cat</option><option value="ferret">Ferret</option></select></label><label>Breed<input name="breed" required maxlength="100"></label><label>Sex<input name="sex" required maxlength="30"></label><label>Date of birth<input type="date" name="birth_date" required></label><label>Colour<input name="colour" required maxlength="100"></label><label class="full">Notable features<textarea name="features" maxlength="500"></textarea></label><button class="primary full">Register pet</button></form></section>`;
+  }<label>Name<input name="name" required maxlength="100"></label><label>Species<select name="species" required><option value="dog">Dog</option><option value="cat">Cat</option><option value="ferret">Ferret</option></select></label><label>Breed<input name="breed" required maxlength="100"></label><label>Sex<input name="sex" required maxlength="30"></label><label>Date of birth<input type="date" name="birth_date" required></label><label>Colour<input name="colour" required maxlength="100"></label><label class="full">Notable features<textarea name="features" maxlength="500"></textarea></label><button class="primary full">Save pet</button></form></section>`;
 }
 
 export function petDetailPage(pet: Pet, passports: Passport[]): string {
@@ -153,37 +163,40 @@ export function petDetailPage(pet: Pet, passports: Passport[]): string {
     passports.map((passport) =>
       `<a class="list-row" href="/passports/${h(passport.id)}"><span><strong>${
         h(passport.country_code)
-      } ${h(passport.number)}</strong><small>${
-        h(passport.model_version)
-      }</small></span><span class="status ${h(passport.status)}">${h(passport.status)}</span></a>`
-    ).join("") || '<div class="empty">No passport record.</div>';
+      } ${
+        h(passport.number)
+      }</strong><small>Digital copy</small></span><span class="arrow">→</span></a>`
+    ).join("") || '<div class="empty">No passport copy yet.</div>';
   return `<div class="page-head"><div><p class="eyebrow">${h(pet.species.toUpperCase())}</p><h1>${
     h(pet.name)
   }</h1><p>${h(pet.breed)} · ${h(pet.colour)} · born ${
     h(displayDate(pet.birth_date))
   }</p></div><a class="primary button" href="/passports/new?pet=${
     h(pet.id)
-  }">Add passport record</a></div><section class="split"><div class="panel detail-list"><h2>Animal description</h2><dl><dt>Owner</dt><dd>${
-    h(pet.owner_name)
-  }</dd><dt>Sex</dt><dd>${h(pet.sex)}</dd><dt>Features</dt><dd>${
+  }">Add passport copy</a></div><section class="split"><div class="panel detail-list"><h2>Animal details</h2><dl><dt>Sex</dt><dd>${
+    h(pet.sex)
+  }</dd><dt>Features</dt><dd>${
     h(pet.features || "None recorded")
-  }</dd></dl></div><div class="panel"><h2>Passport records</h2>${records}</div></section>`;
+  }</dd></dl></div><div class="panel"><h2>Passport copies</h2>${records}</div></section>`;
 }
 
-export function passportsPage(passports: Passport[]): string {
+export function passportsPage(passports: Passport[], hasPets: boolean): string {
   const rows =
     passports.map((passport) =>
       `<a class="passport-card" href="/passports/${
         h(passport.id)
-      }"><span class="passport-cover">${euEmblem()}<strong>EU<br>PET<br>PASSPORT</strong><small>${
+      }"><span class="passport-cover">${euEmblem()}<strong>DIGITAL<br>PASSPORT<br>COPY</strong><small>${
         h(passport.country_code)
-      } ${h(passport.number)}</small></span><span><p class="eyebrow">${
-        h(passport.model_version)
-      }</p><h2>${h(passport.pet_name)}</h2><p>${h(passport.species)} · ${
-        h(passport.owner_name)
-      }</p><span class="status ${h(passport.status)}">${h(passport.status)}</span></span></a>`
-    ).join("") || '<div class="empty panel">No passport records.</div>';
-  return `<div class="page-head"><div><p class="eyebrow">PHYSICAL BOOKLET REGISTER</p><h1>Passport records</h1><p>Digital record copies linked to physical EU booklets.</p></div><a class="primary button" href="/passports/new">Add record</a></div><div class="passport-grid">${rows}</div>`;
+      } ${h(passport.number)}</small></span><span><p class="eyebrow">PERSONAL COPY</p><h2>${
+        h(passport.pet_name)
+      }</h2><p>${h(passport.species)} · ${
+        h(passport.breed)
+      }</p><span class="copy-chip">Emergency view ready</span></span></a>`
+    ).join("") || '<div class="empty panel">No passport copies yet.</div>';
+  const action = hasPets
+    ? '<a class="primary button" href="/passports/new">Add passport copy</a>'
+    : '<a class="primary button" href="/pets/new">Add pet first</a>';
+  return `<div class="page-head"><div><p class="eyebrow">MY COPIES</p><h1>Passport copies</h1><p>Information transcribed from physical pet passports.</p></div>${action}</div><div class="passport-grid">${rows}</div>`;
 }
 
 export function passportFormPage(
@@ -191,33 +204,33 @@ export function passportFormPage(
   csrf: string,
   countryCode: string,
   selectedPet = "",
-  error = "",
 ): string {
+  if (!pets.length) {
+    return `<div class="page-head"><div><p class="eyebrow">STEP 2</p><h1>Add passport copy</h1></div></div><section class="panel empty-state"><h2>Add pet first</h2><p>A passport copy must belong to one of your pets.</p><a class="primary button" href="/pets/new">Add pet</a></section>`;
+  }
   const options = pets.map((pet) =>
-    `<option value="${h(pet.id)}" ${pet.id === selectedPet ? "selected" : ""}>${h(pet.name)} · ${
-      h(pet.owner_name)
+    `<option value="${h(pet.id)}" ${pet.id === selectedPet ? "selected" : ""}>${
+      h(pet.name)
     }</option>`
   ).join("");
-  return `<div class="page-head"><div><p class="eyebrow">2026 MODEL</p><h1>Add physical passport record</h1><p>Enter number from authority-controlled paper booklet. App never generates official numbers.</p></div></div>${
-    error ? alert(error, "error") : ""
-  }<section class="panel form-panel">${
-    alert("This creates a digital companion record, not an official travel document.")
-  }<form method="post" action="/passports" class="form-grid">${
+  return `<div class="page-head"><div><p class="eyebrow">STEP 2</p><h1>Add passport copy</h1><p>Enter identifying numbers exactly as printed in physical booklet.</p></div></div>${
+    alert("Personal digital copy only — not an official passport or travel document.")
+  }<section class="panel form-panel"><form method="post" action="/passports" class="form-grid">${
     csrfInput(csrf)
   }<label class="full">Pet<select name="pet_id" required><option value="">Select pet</option>${options}</select></label><label>Issuing country code<input name="country_code" value="${
     h(countryCode)
-  }" required maxlength="2" pattern="[A-Za-z]{2}"></label><label>Physical booklet number<input name="number" required maxlength="32" placeholder="00 123456"></label><button class="primary full">Create draft record</button></form></section>`;
+  }" required maxlength="2" pattern="[A-Za-z]{2}"></label><label>Physical booklet number<input name="number" required maxlength="32" placeholder="00 123456"></label><label>Passport model<input name="model_version" maxlength="100" value="EU pet passport"></label><label>Date physically issued<input type="date" name="issued_on"></label><label class="full">Issuing veterinarian / authority<input name="issuing_vet" maxlength="150" placeholder="Copy name or clinic as printed"></label><button class="primary full">Create passport copy</button></form></section>`;
 }
 
 const sectionMap: Record<string, string> = {
-  rabies: "V · Rabies vaccination",
-  titration: "VI · Rabies antibody titration",
-  echinococcus: "VII · Anti-Echinococcus",
-  antiparasite: "VIII · Other anti-parasite",
-  vaccination: "IX · Other vaccination",
-  clinical: "X · Clinical examination",
-  legalisation: "XI · Legalisation",
-  other: "XII · Others",
+  rabies: "Rabies vaccination",
+  titration: "Rabies antibody test",
+  echinococcus: "Echinococcus treatment",
+  antiparasite: "Anti-parasite treatment",
+  vaccination: "Other vaccination",
+  clinical: "Clinical examination",
+  legalisation: "Legalisation",
+  other: "Other entry",
 };
 
 function recordRows(records: MedicalRecord[]): string {
@@ -229,10 +242,8 @@ function recordRows(records: MedicalRecord[]): string {
       h(displayDate(data.date))
     }${data.time ? ` · ${h(data.time)}` : ""}${data.batch ? ` · batch ${h(data.batch)}` : ""}${
       data.valid_until ? ` · valid until ${h(displayDate(data.valid_until))}` : ""
-    }</small></div><div><span class="signed">Signed</span><small>${
-      h(record.signer_name)
-    }</small></div></article>`;
-  }).join("") || '<div class="empty">No signed health entries.</div>';
+    }</small></div><span class="copy-chip">Copied</span></article>`;
+  }).join("") || '<div class="empty">No health entries copied yet.</div>';
 }
 
 export function passportDetailPage(
@@ -240,253 +251,103 @@ export function passportDetailPage(
   owner: Owner,
   ids: Identification[],
   records: MedicalRecord[],
-  user: User,
   csrf: string,
-  readiness?: ReadinessResult,
-  error = "",
 ): string {
-  const canWrite = user.role === "admin" ||
-    (user.role === "veterinarian" && user.vet_verified === 1);
   const idRows =
     ids.map((id) =>
-      `<div class="id-row"><span class="status recorded">${h(id.kind)}</span><strong>${
+      `<div class="id-row"><span class="copy-chip">${h(id.kind)}</span><strong>${
         h(id.code)
       }</strong><small>${h(displayDate(id.marked_on))} · ${h(id.location)}</small></div>`
-    ).join("") || '<div class="empty">No verified identification.</div>';
-  const checks = readiness
-    ? `<section class="panel readiness"><div class="panel-head"><div><p class="eyebrow">ADVISORY RESULT</p><h2>${
-      readiness.ready ? "No blocking issue found" : "Action needed"
-    }</h2></div><span class="status ${readiness.ready ? "recorded" : "void"}">${
-      readiness.ready ? "review" : "not ready"
-    }</span></div>${
-      readiness.checks.map((check) =>
-        `<div class="check ${h(check.level)}"><span></span>${h(check.message)}</div>`
-      ).join("")
-    }<small>${h(readiness.ruleset)}</small></section>`
-    : "";
-  const coreDisabled = passport.status === "draft" ? "" : "disabled";
-  return `<div class="page-head"><div><p class="eyebrow">${h(passport.model_version)}</p><h1>${
+    ).join("") || '<div class="empty">No identification copied yet.</div>';
+  return `<div class="page-head"><div><p class="eyebrow">PERSONAL DIGITAL COPY</p><h1>${
     h(passport.pet_name)
-  }</h1><p>${h(passport.country_code)} ${h(passport.number)} · ${
-    h(passport.owner_name)
-  }</p></div><div class="head-actions"><span class="status ${h(passport.status)}">${
-    h(passport.status)
-  }</span><a class="secondary button" href="/passports/${
+  }</h1><p>${h(passport.country_code)} ${
+    h(passport.number)
+  }</p></div><a class="primary button" href="/passports/${
     h(passport.id)
-  }/print" target="_blank">Print record copy</a></div></div>${error ? alert(error, "error") : ""}${
+  }/emergency" target="_blank">Open emergency view</a></div>${
     alert(
-      "RECORD COPY — NOT VALID AS ORIGINAL PASSPORT. Keep physical authorised booklet with pet.",
+      "Not an official passport. Verify critical information against physical booklet when available.",
     )
   }
-  <section class="passport-summary"><div class="passport-cover large-cover">${euEmblem()}<strong>EU<br>PET<br>PASSPORT</strong><small>${
-    h(passport.country_code)
-  } ${
-    h(passport.number)
-  }</small></div><div class="panel detail-list"><h2>I–IV · Core identity</h2><dl><dt>Owner</dt><dd>${
+  <section class="passport-summary">${
+    passportCover(passport)
+  }<div class="panel detail-list"><h2>Quick details</h2><dl><dt>Owner</dt><dd>${
     h(owner.first_name)
-  } ${h(owner.last_name)}<br><small>${h(owner.address)}, ${h(owner.postal_code)} ${
-    h(owner.city)
-  }, ${h(owner.country)}</small></dd><dt>Animal</dt><dd>${h(passport.pet_name)} · ${
-    h(passport.species)
-  } · ${
+  } ${h(owner.last_name)}<br><small>${
+    h(owner.phone || "No phone saved")
+  }</small></dd><dt>Animal</dt><dd>${h(passport.pet_name)} · ${h(passport.species)} · ${
     h(passport.breed)
-  }</dd><dt>Identification</dt><dd>${idRows}</dd><dt>Physical issue</dt><dd>${
-    passport.issued_at
-      ? `${h(displayDate(passport.issued_at))} · ${h(passport.issuing_vet_name)}`
-      : "Not yet recorded"
-  }</dd></dl></div></section>
-  <section class="content-grid"><div class="panel wide"><div class="panel-head"><div><p class="eyebrow">APPEND-ONLY LOG</p><h2>V–XII · Health entries</h2></div></div>${
+  }</dd><dt>Physical issue</dt><dd>${
+    passport.issued_on_copy ? h(displayDate(passport.issued_on_copy)) : "Not copied"
+  }${
+    passport.issuing_vet_name_copy ? `<br><small>${h(passport.issuing_vet_name_copy)}</small>` : ""
+  }</dd><dt>Identification</dt><dd>${idRows}</dd></dl></div></section>
+  <section class="panel"><div class="panel-head"><div><p class="eyebrow">FROM PHYSICAL BOOKLET</p><h2>Health information</h2></div></div>${
     recordRows(records)
-  }</div><aside class="panel"><p class="eyebrow">TRAVEL CHECK</p><h2>Check basic readiness</h2><form method="get" action="/passports/${
+  }</section>
+  <section class="edit-zone simple-entry-grid"><details class="panel" open><summary>Add identification</summary><p class="legal-note">Copy microchip or tattoo details exactly.</p><form method="post" action="/passports/${
     h(passport.id)
-  }" class="stack"><label>Destination<select name="destination"><option value="DE">EU / standard</option><option value="FI">Finland</option><option value="IE">Ireland</option><option value="MT">Malta</option><option value="NI">Northern Ireland</option><option value="NO">Norway</option></select></label><label>Travel date<input type="date" name="travel_date" required></label><button class="secondary">Run advisory check</button></form><p class="legal-note">Not legal or veterinary advice. Country rules can add requirements.</p></aside></section>${checks}${
-    canWrite && passport.status !== "void"
-      ? `<section class="split edit-zone"><div class="panel"><p class="eyebrow">SECTION III</p><h2>Verify identification</h2><form method="post" action="/passports/${
-        h(passport.id)
-      }/identifications" class="form-grid">${
-        csrfInput(csrf)
-      }<label>Kind<select name="kind" ${coreDisabled}><option value="microchip">Microchip</option><option value="tattoo">Legacy tattoo</option></select></label><label>Code<input name="code" required maxlength="32" ${coreDisabled}></label><label>Date applied/read<input type="date" name="marked_on" required ${coreDisabled}></label><label>Location<input name="location" required maxlength="100" placeholder="Left neck" ${coreDisabled}></label><button class="primary full" ${coreDisabled}>${
-        passport.status === "draft" ? "Verify and append" : "Core identity locked"
-      }</button></form></div><div class="panel"><p class="eyebrow">SECTIONS V–XII</p><h2>Sign health entry</h2><form method="post" action="/passports/${
-        h(passport.id)
-      }/records" class="form-grid">${
-        csrfInput(csrf)
-      }<label class="full">Section<select name="type"><option value="rabies">V · Rabies</option><option value="titration">VI · Titration</option><option value="echinococcus">VII · Echinococcus</option><option value="antiparasite">VIII · Anti-parasite</option><option value="vaccination">IX · Other vaccination</option><option value="clinical">X · Clinical exam</option><option value="legalisation">XI · Legalisation</option><option value="other">XII · Others</option></select></label><label>Product / lab<input name="product" maxlength="200"></label><label>Batch<input name="batch" maxlength="100"></label><label>Report reference<input name="reference" maxlength="100"></label><label>Result IU/ml<input name="result" maxlength="30"></label><label>Date<input type="date" name="date" required></label><label>Time<input type="time" name="time"></label><label>Valid from<input type="date" name="valid_from"></label><label>Valid until<input type="date" name="valid_until"></label><label class="full">Notes<textarea name="notes" maxlength="500"></textarea></label><button class="primary full">Sign and append entry</button></form></div></section><section class="panel record-issue ${
-        passport.status === "draft" ? "" : "hidden"
-      }"><div><p class="eyebrow">PHYSICAL BOOKLET</p><h2>Record authorised issue</h2><p>Use only after authorised vet physically signs/stamps controlled booklet. This locks Sections I–IV in app.</p></div><form method="post" action="/passports/${
-        h(passport.id)
-      }/record-issue" class="stack">${
-        csrfInput(csrf)
-      }<label>Confirm current password<input type="password" name="password" required autocomplete="current-password"></label><button class="danger">Record physical issue & lock</button></form></section>`
-      : ""
-  }`;
-}
-
-export function usersPage(users: User[], csrf: string, error = ""): string {
-  const rows = users.map((user) =>
-    `<tr><td><strong>${h(user.display_name)}</strong><small>${
-      h(user.email)
-    }</small></td><td><span class="role">${h(user.role)}</span></td><td>${
-      user.role === "veterinarian"
-        ? (user.vet_verified ? '<span class="signed">Verified</span>' : "Unverified")
-        : "—"
-    }</td><td>${h(user.status)}</td></tr>`
-  ).join("");
-  return `<div class="page-head"><div><p class="eyebrow">ACCESS CONTROL</p><h1>Users</h1><p>No public signup. Admin grants least-privilege roles.</p></div></div>${
-    error ? alert(error, "error") : ""
-  }<section class="split"><div class="panel"><table><thead><tr><th>Login account</th><th>Role</th><th>Vet authority</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div><aside class="panel"><h2>Create login account</h2><form method="post" action="/admin/users" class="stack">${
+  }/identifications" class="form-grid">${
     csrfInput(csrf)
-  }<label>Name<input name="display_name" required maxlength="100"></label><label>Email<input type="email" name="email" required maxlength="200"></label><label>Temporary password<input type="password" name="password" required minlength="14" autocomplete="new-password"></label><label>Role<select name="role"><option value="owner">Owner login</option><option value="veterinarian">Veterinarian</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select></label><p class="legal-note"><strong>Owner login:</strong> first create an Owner contact with the exact same email. This account then sees that contact's pets and passports.</p><label class="check-label"><input type="checkbox" name="vet_verified" value="1"> Authority-verified veterinarian</label><button class="primary">Create account</button></form></aside></section>`;
+  }<label>Type<select name="kind"><option value="microchip">Microchip</option><option value="tattoo">Legacy tattoo</option></select></label><label>Code<input name="code" required maxlength="32"></label><label>Date applied/read<input type="date" name="marked_on" required></label><label>Location<input name="location" required maxlength="100" placeholder="Left neck"></label><button class="secondary full">Add identification</button></form></details>
+  <details class="panel"><summary>Add health information</summary><p class="legal-note">Copy one entry exactly as written in physical passport.</p><form method="post" action="/passports/${
+    h(passport.id)
+  }/records" class="form-grid">${
+    csrfInput(csrf)
+  }<label class="full">Entry type<select name="type"><option value="rabies">Rabies vaccination</option><option value="titration">Rabies antibody test</option><option value="echinococcus">Echinococcus treatment</option><option value="antiparasite">Anti-parasite treatment</option><option value="vaccination">Other vaccination</option><option value="clinical">Clinical examination</option><option value="legalisation">Legalisation</option><option value="other">Other</option></select></label><label>Product / laboratory<input name="product" maxlength="200"></label><label>Batch<input name="batch" maxlength="100"></label><label>Report reference<input name="reference" maxlength="100"></label><label>Result IU/ml<input name="result" maxlength="30"></label><label>Date<input type="date" name="date" required></label><label>Time<input type="time" name="time"></label><label>Valid from<input type="date" name="valid_from"></label><label>Valid until<input type="date" name="valid_until"></label><label class="full">Notes<textarea name="notes" maxlength="500"></textarea></label><button class="secondary full">Add health information</button></form></details></section>`;
 }
 
-export function auditPage(events: Array<Record<string, unknown>>, chainOk: boolean): string {
-  const rows = events.map((event) =>
-    `<tr><td>${h(String(event.created_at).replace("T", " ").slice(0, 19))}</td><td>${
-      h(event.actor_name ?? "System")
-    }</td><td><code>${h(event.action)}</code></td><td>${h(event.entity_type)}<small>${
-      h(event.entity_id)
-    }</small></td><td><code>${h(String(event.event_hash).slice(0, 12))}…</code></td></tr>`
-  ).join("");
-  return `<div class="page-head"><div><p class="eyebrow">TAMPER-EVIDENT LOG</p><h1>Audit trail</h1><p>Hash-chained record of security and data mutations.</p></div><span class="status ${
-    chainOk ? "recorded" : "void"
-  }">${
-    chainOk ? "chain verified" : "chain broken"
-  }</span></div><section class="panel table-scroll"><table><thead><tr><th>Time UTC</th><th>Actor</th><th>Action</th><th>Entity</th><th>Hash</th></tr></thead><tbody>${rows}</tbody></table></section>`;
-}
-
-function printPage(
-  number: string,
-  section: string,
-  body: string,
-  index: number,
-  total: number,
-): string {
-  return `<section class="passport-page"><div class="copy-watermark">RECORD COPY · NOT VALID AS ORIGINAL PASSPORT</div><header>${
-    h(section)
-  }</header><div class="passport-page-body">${body}</div><footer><span>${
-    h(number)
-  }</span><span>${index} out of ${total}</span></footer></section>`;
-}
-
-function printRecords(records: MedicalRecord[], types: string[]): string {
-  const matching = records.filter((record) => types.includes(record.type));
-  if (!matching.length) return '<p class="blank-entry">No entry recorded</p>';
-  return matching.map((record) => {
+function emergencyRecords(records: MedicalRecord[]): string {
+  return records.map((record) => {
     const data = JSON.parse(record.data_json) as Record<string, string>;
-    return `<div class="print-entry"><strong>${
-      h(data.product || data.notes || sectionMap[record.type])
-    }</strong><dl><dt>Date</dt><dd>${h(displayDate(data.date))}${
-      data.time ? ` ${h(data.time)}` : ""
-    }</dd>${data.batch ? `<dt>Batch</dt><dd>${h(data.batch)}</dd>` : ""}${
-      data.reference ? `<dt>Reference</dt><dd>${h(data.reference)}</dd>` : ""
-    }${data.result ? `<dt>Result</dt><dd>${h(data.result)} IU/ml</dd>` : ""}${
-      data.valid_from ? `<dt>Valid from</dt><dd>${h(displayDate(data.valid_from))}</dd>` : ""
-    }${
-      data.valid_until ? `<dt>Valid until</dt><dd>${h(displayDate(data.valid_until))}</dd>` : ""
-    }<dt>Signed by</dt><dd>${h(record.signer_name)} · ${
-      h(displayDate(record.signed_at))
-    }</dd></dl></div>`;
-  }).join("");
+    return `<article><strong>${h(sectionMap[record.type])}</strong><span>${
+      h(data.product || data.notes || "Recorded entry")
+    }</span><small>${h(displayDate(data.date))}${data.batch ? ` · batch ${h(data.batch)}` : ""}${
+      data.valid_until ? ` · valid until ${h(displayDate(data.valid_until))}` : ""
+    }</small></article>`;
+  }).join("") || "<p>No health information saved.</p>";
 }
 
-export function passportPrintPage(
+export function emergencyPage(
   passport: Passport,
   owner: Owner,
   ids: Identification[],
   records: MedicalRecord[],
 ): string {
-  const number = `${passport.country_code} ${passport.number}`;
-  const total = 13;
-  const pages = [
-    `<section class="print-cover">${euEmblem()}<p>European Union<br>[${
-      h(passport.country_code)
-    }]</p><h1>PET<br>PASSPORT</h1><strong>${
-      h(number)
-    }</strong><small>RECORD COPY · NOT VALID FOR TRAVEL</small></section>`,
-    printPage(
-      number,
-      "I. DETAILS OF OWNERSHIP",
-      `<dl><dt>Name</dt><dd>${h(owner.first_name)} ${h(owner.last_name)}</dd><dt>Address</dt><dd>${
-        h(owner.address)
-      }<br>${h(owner.postal_code)} ${h(owner.city)}<br>${
-        h(owner.country)
-      }</dd><dt>Tel / email</dt><dd>${h(owner.phone || "—")}<br>${
-        h(owner.email)
-      }</dd><dt>Signature</dt><dd>See authorised physical booklet</dd></dl>`,
-      2,
-      total,
-    ),
-    printPage(
-      number,
-      "II. DESCRIPTION OF ANIMAL",
-      `<div class="photo-placeholder">PICTURE OF ANIMAL<br><small>optional · see physical booklet</small></div><dl><dt>Name</dt><dd>${
-        h(passport.pet_name)
-      }</dd><dt>Species / breed</dt><dd>${h(passport.species)} / ${
-        h(passport.breed)
-      }</dd><dt>Sex</dt><dd>${h(passport.sex)}</dd><dt>Date of birth</dt><dd>${
-        h(displayDate(passport.birth_date))
-      }</dd><dt>Colour</dt><dd>${h(passport.colour)}</dd><dt>Features</dt><dd>${
-        h(passport.features || "—")
-      }</dd></dl>`,
-      3,
-      total,
-    ),
-    printPage(
-      number,
-      "III. ANIMAL IDENTIFICATION",
-      ids.map((id) =>
-        `<div class="print-entry"><dl><dt>Type</dt><dd>${h(id.kind)}</dd><dt>Code</dt><dd>${
-          h(id.code)
-        }</dd><dt>Date applied/read</dt><dd>${
-          h(displayDate(id.marked_on))
-        }</dd><dt>Location</dt><dd>${h(id.location)}</dd></dl></div>`
-      ).join("") || '<p class="blank-entry">No verified entry</p>',
-      4,
-      total,
-    ),
-    printPage(
-      number,
-      "IV. ISSUING OF THE PASSPORT",
-      `<dl><dt>Authorised veterinarian</dt><dd>${
-        h(passport.issuing_vet_name || "Not recorded")
-      }</dd><dt>Date of physical issue</dt><dd>${
-        h(displayDate(passport.issued_at))
-      }</dd><dt>Stamp & signature</dt><dd>See authorised physical booklet</dd></dl>`,
-      5,
-      total,
-    ),
-    printPage(number, "V. VACCINATION AGAINST RABIES", printRecords(records, ["rabies"]), 6, total),
-    printPage(
-      number,
-      "VI. RABIES ANTIBODY TITRATION TEST",
-      printRecords(records, ["titration"]),
-      7,
-      total,
-    ),
-    printPage(
-      number,
-      "VII. ANTI-ECHINOCOCCUS TREATMENT",
-      printRecords(records, ["echinococcus"]),
-      8,
-      total,
-    ),
-    printPage(
-      number,
-      "VIII. OTHER ANTI-PARASITE TREATMENTS",
-      printRecords(records, ["antiparasite"]),
-      9,
-      total,
-    ),
-    printPage(number, "IX. OTHER VACCINATIONS", printRecords(records, ["vaccination"]), 10, total),
-    printPage(number, "X. CLINICAL EXAMINATION", printRecords(records, ["clinical"]), 11, total),
-    printPage(number, "XI. LEGALISATION", printRecords(records, ["legalisation"]), 12, total),
-    printPage(number, "XII. OTHERS", printRecords(records, ["other"]), 13, total),
-  ];
+  const identification =
+    ids.map((id) =>
+      `<div><strong>${h(id.kind)} · ${h(id.code)}</strong><small>${
+        h(displayDate(id.marked_on))
+      } · ${h(id.location)}</small></div>`
+    ).join("") || "<p>No identification saved.</p>";
   return layout(
-    "Passport record copy",
-    `<div class="print-toolbar"><button id="print-button">Print / save PDF</button><p>Browser print: 100 × 152 mm, margins none.</p></div>${
-      pages.join("")
-    }`,
+    `${passport.pet_name} emergency record`,
+    `<div class="print-toolbar"><button id="print-button">Print / save PDF</button><p>Single-page personal reference.</p></div><section class="emergency-sheet"><header><div><p>PERSONAL DIGITAL COPY</p><h1>${
+      h(passport.pet_name)
+    }</h1><strong>${h(passport.country_code)} ${
+      h(passport.number)
+    }</strong></div>${euEmblem()}</header><div class="emergency-warning">NOT AN OFFICIAL PET PASSPORT · NOT VALID FOR TRAVEL</div><section><h2>Animal</h2><dl><dt>Species / breed</dt><dd>${
+      h(passport.species)
+    } / ${h(passport.breed)}</dd><dt>Sex</dt><dd>${h(passport.sex)}</dd><dt>Born</dt><dd>${
+      h(displayDate(passport.birth_date))
+    }</dd><dt>Colour</dt><dd>${h(passport.colour)}</dd><dt>Features</dt><dd>${
+      h(passport.features || "—")
+    }</dd><dt>Physical issue</dt><dd>${
+      passport.issued_on_copy ? h(displayDate(passport.issued_on_copy)) : "—"
+    }${
+      passport.issuing_vet_name_copy ? ` · ${h(passport.issuing_vet_name_copy)}` : ""
+    }</dd></dl></section><section><h2>Identification</h2><div class="emergency-identification">${identification}</div></section><section><h2>Health information copied from booklet</h2><div class="emergency-records">${
+      emergencyRecords(records)
+    }</div></section><section><h2>Owner contact</h2><dl><dt>Name</dt><dd>${h(owner.first_name)} ${
+      h(owner.last_name)
+    }</dd><dt>Phone</dt><dd>${h(owner.phone || "—")}</dd><dt>Email</dt><dd>${
+      h(owner.email)
+    }</dd><dt>Address</dt><dd>${h(owner.address || "—")}, ${h(owner.postal_code)} ${
+      h(owner.city)
+    }, ${
+      h(owner.country)
+    }</dd></dl></section><footer>Information entered by account owner. Check physical passport when possible.</footer></section>`,
     undefined,
     "",
     { print: true },

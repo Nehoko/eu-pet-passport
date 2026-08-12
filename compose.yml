@@ -1,8 +1,9 @@
-name: petpass-eu
+name: petpass-personal
 
 services:
   app:
-    image: ghcr.io/nehoko/eu-pet-passport:${APP_VERSION:-latest}
+    image: ghcr.io/nehoko/eu-pet-passport:${APP_VERSION:-personal}
+    build: .
     init: true
     restart: unless-stopped
     read_only: true
@@ -20,14 +21,9 @@ services:
       APP_PORT: 8000
       APP_DB_PATH: /data/petpass.db
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8000}
-      APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@example.com}
-      APP_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
-      APP_MEMBER_STATE: ${APP_MEMBER_STATE:-Member State}
       APP_COUNTRY_CODE: ${APP_COUNTRY_CODE:-DE}
-    secrets:
-      - admin_password
     volumes:
-      - petpass_data:/data
+      - petpass_personal_data:/data
     healthcheck:
       test: ["CMD", "/app/petpass", "healthcheck", "http://127.0.0.1:8000/health/ready"]
       interval: 30s
@@ -35,9 +31,5 @@ services:
       retries: 5
       start_period: 15s
 
-secrets:
-  admin_password:
-    file: ${APP_ADMIN_PASSWORD_FILE:-./secrets/admin_password.txt}
-
 volumes:
-  petpass_data:
+  petpass_personal_data:

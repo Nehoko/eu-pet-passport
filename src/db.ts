@@ -8,7 +8,6 @@ import type {
   Passport,
   Pet,
   RecordType,
-  Role,
   SessionContext,
   User,
 } from "./types.ts";
@@ -26,7 +25,12 @@ export class PetPassDatabase {
     this.raw.exec("PRAGMA journal_mode = WAL");
     this.raw.exec("PRAGMA synchronous = FULL");
     this.raw.exec("PRAGMA busy_timeout = 5000");
-    this.migrate();
+    try {
+      this.migrate();
+    } catch (error) {
+      this.raw.close();
+      throw error;
+    }
   }
 
   close(): void {
@@ -47,9 +51,7 @@ export class PetPassDatabase {
         password_salt TEXT NOT NULL,
         password_hash TEXT NOT NULL,
         password_iterations INTEGER NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin','veterinarian','owner','auditor')),
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
-        vet_verified INTEGER NOT NULL DEFAULT 0 CHECK(vet_verified IN (0,1)),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       ) STRICT;
@@ -99,6 +101,8 @@ export class PetPassDatabase {
         model_version TEXT NOT NULL DEFAULT 'EU-2026/705',
         status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','recorded','void')),
         issuing_vet_id TEXT REFERENCES users(id),
+        issuing_vet_name_copy TEXT NOT NULL DEFAULT '',
+        issued_on_copy TEXT,
         issued_at TEXT,
         void_reason TEXT,
         created_at TEXT NOT NULL,
@@ -151,6 +155,31 @@ export class PetPassDatabase {
 
       INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'));
     `);
+
+    // Personal deployments use a separate volume. Do not destructively rewrite a clinic-edition
+    // database if an operator accidentally points this image at the old volume.
+    const userColumns = this.raw.prepare("PRAGMA table_info(users)").all() as Array<{
+      name: string;
+    }>;
+    if (userColumns.some((column) => column.name === "role" || column.name === "vet_verified")) {
+      throw new Error(
+        "Clinic-edition database detected. Use the separate petpass_personal_data volume.",
+      );
+    }
+    const passportColumns = this.raw.prepare("PRAGMA table_info(passports)").all() as Array<{
+      name: string;
+    }>;
+    if (!passportColumns.some((column) => column.name === "issuing_vet_name_copy")) {
+      this.raw.exec(
+        "ALTER TABLE passports ADD COLUMN issuing_vet_name_copy TEXT NOT NULL DEFAULT ''",
+      );
+    }
+    if (!passportColumns.some((column) => column.name === "issued_on_copy")) {
+      this.raw.exec("ALTER TABLE passports ADD COLUMN issued_on_copy TEXT");
+    }
+    this.raw.exec(
+      "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, datetime('now'))",
+    );
   }
 
   private transaction<T>(fn: () => T): T {
@@ -206,59 +235,45 @@ export class PetPassDatabase {
     );
   }
 
-  bootstrapAdmin(email: string, password: string): void {
-    const count = this.raw.prepare("SELECT count(*) AS total FROM users").get() as {
-      total: number;
-    };
-    if (count.total > 0) return;
-    if (!password) {
-      throw new Error(
-        "APP_ADMIN_PASSWORD or APP_ADMIN_PASSWORD_FILE is required when database is empty",
-      );
-    }
-    this.createUser(null, {
-      email,
-      displayName: "System Administrator",
-      password,
-      role: "admin",
-      vetVerified: false,
-    });
-  }
-
-  createUser(
-    actorId: string | null,
-    input: {
-      email: string;
-      displayName: string;
-      password: string;
-      role: Role;
-      vetVerified: boolean;
-    },
-  ): string {
+  createAccount(input: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+  }): string {
     const digest = hashPassword(input.password);
     const id = crypto.randomUUID();
+    const ownerId = crypto.randomUUID();
     const timestamp = now();
     this.transaction(() => {
       this.raw.prepare(`
         INSERT INTO users
-          (id, email, display_name, password_salt, password_hash, password_iterations, role, vet_verified, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, email, display_name, password_salt, password_hash, password_iterations, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         input.email.toLowerCase(),
-        input.displayName,
+        `${input.firstName} ${input.lastName}`,
         digest.salt,
         digest.hash,
         digest.iterations,
-        input.role,
-        input.vetVerified ? 1 : 0,
         timestamp,
         timestamp,
       );
-      this.audit(actorId, "user.created", "user", id, {
+      this.raw.prepare(`
+        INSERT INTO owners
+          (id, first_name, last_name, address, postal_code, city, country, phone, email, created_at, updated_at)
+        VALUES (?, ?, ?, '', '', '', '', '', ?, ?, ?)
+      `).run(
+        ownerId,
+        input.firstName,
+        input.lastName,
+        input.email.toLowerCase(),
+        timestamp,
+        timestamp,
+      );
+      this.audit(id, "account.created", "user", id, {
         email: input.email.toLowerCase(),
-        role: input.role,
-        vetVerified: input.vetVerified,
       });
     });
     return id;
@@ -282,39 +297,8 @@ export class PetPassDatabase {
 
   getUser(id: string): User | undefined {
     return this.raw.prepare(
-      "SELECT id, email, display_name, role, status, vet_verified FROM users WHERE id = ?",
+      "SELECT id, email, display_name, status FROM users WHERE id = ?",
     ).get(id) as User | undefined;
-  }
-
-  listUsers(): User[] {
-    return this.raw.prepare(
-      "SELECT id, email, display_name, role, status, vet_verified FROM users ORDER BY display_name",
-    ).all() as unknown as User[];
-  }
-
-  resetAdminPassword(email: string, password: string): { email: string; sessionsRevoked: number } {
-    const admin = this.getUserAuth(email);
-    if (!admin || admin.role !== "admin" || admin.status !== "active") {
-      throw new Error("Active administrator account not found");
-    }
-    const digest = hashPassword(password);
-    const sessions = this.raw.prepare(
-      "SELECT count(*) AS total FROM sessions WHERE user_id = ?",
-    ).get(admin.id) as { total: number };
-    this.transaction(() => {
-      this.raw.prepare(`
-        UPDATE users
-        SET password_salt = ?, password_hash = ?, password_iterations = ?, updated_at = ?
-        WHERE id = ?
-      `).run(digest.salt, digest.hash, digest.iterations, now(), admin.id);
-      this.raw.prepare("DELETE FROM sessions WHERE user_id = ?").run(admin.id);
-      this.audit(null, "admin.password_reset", "user", admin.id, {
-        email: admin.email,
-        sessionsRevoked: sessions.total,
-        method: "offline-cli",
-      });
-    });
-    return { email: admin.email, sessionsRevoked: sessions.total };
   }
 
   createSession(userId: string, tokenDigest: string, csrf: string): void {
@@ -328,7 +312,7 @@ export class PetPassDatabase {
   getSession(tokenDigest: string): SessionContext | undefined {
     const row = this.raw.prepare(`
       SELECT s.token_digest, s.csrf, s.expires_at, s.last_seen_at,
-             u.id, u.email, u.display_name, u.role, u.status, u.vet_verified
+             u.id, u.email, u.display_name, u.status
       FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_digest = ?
     `).get(tokenDigest) as
@@ -356,9 +340,7 @@ export class PetPassDatabase {
         id: row.id,
         email: row.email,
         display_name: row.display_name,
-        role: row.role,
         status: row.status,
-        vet_verified: row.vet_verified,
       },
       csrf: row.csrf,
       tokenDigest,
@@ -410,6 +392,40 @@ export class PetPassDatabase {
     return this.raw.prepare("SELECT * FROM owners WHERE id = ?").get(id) as Owner | undefined;
   }
 
+  updateOwnerProfile(
+    actorId: string,
+    email: string,
+    input: Omit<Owner, "id" | "email" | "created_at">,
+  ): void {
+    const owner = this.getOwnerByEmail(email);
+    if (!owner) throw new Error("Account profile not found");
+    const timestamp = now();
+    this.transaction(() => {
+      this.raw.prepare(`
+        UPDATE owners
+        SET first_name = ?, last_name = ?, address = ?, postal_code = ?, city = ?,
+            country = ?, phone = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        input.first_name,
+        input.last_name,
+        input.address,
+        input.postal_code,
+        input.city,
+        input.country,
+        input.phone,
+        timestamp,
+        owner.id,
+      );
+      this.raw.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(
+        `${input.first_name} ${input.last_name}`,
+        timestamp,
+        actorId,
+      );
+      this.audit(actorId, "profile.updated", "owner", owner.id);
+    });
+  }
+
   createPet(
     actorId: string,
     input: Omit<Pet, "id" | "owner_name" | "created_at" | "updated_at">,
@@ -439,17 +455,14 @@ export class PetPassDatabase {
     return id;
   }
 
-  listPets(user?: User): Pet[] {
+  listPets(user: User): Pet[] {
     const base = `
       SELECT p.*, o.first_name || ' ' || o.last_name AS owner_name
       FROM pets p JOIN owners o ON o.id = p.owner_id
     `;
-    if (user?.role === "owner") {
-      return this.raw.prepare(`${base} WHERE lower(o.email) = lower(?) ORDER BY p.name`).all(
-        user.email,
-      ) as unknown as Pet[];
-    }
-    return this.raw.prepare(`${base} ORDER BY p.name`).all() as unknown as Pet[];
+    return this.raw.prepare(`${base} WHERE lower(o.email) = lower(?) ORDER BY p.name`).all(
+      user.email,
+    ) as unknown as Pet[];
   }
 
   getPet(id: string): Pet | undefined {
@@ -461,24 +474,43 @@ export class PetPassDatabase {
 
   createPassport(
     actorId: string,
-    input: { petId: string; countryCode: string; number: string },
+    input: {
+      petId: string;
+      countryCode: string;
+      number: string;
+      modelVersion?: string;
+      issuingVet?: string;
+      issuedOn?: string;
+    },
   ): string {
     const id = crypto.randomUUID();
     const timestamp = now();
     this.transaction(() => {
       this.raw.prepare(`
-        INSERT INTO passports(id, pet_id, country_code, number, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, input.petId, input.countryCode, input.number, timestamp, timestamp);
+        INSERT INTO passports(
+          id, pet_id, country_code, number, model_version, status,
+          issuing_vet_name_copy, issued_on_copy, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'recorded', ?, ?, ?, ?)
+      `).run(
+        id,
+        input.petId,
+        input.countryCode,
+        input.number,
+        input.modelVersion || "EU pet passport",
+        input.issuingVet || "",
+        input.issuedOn || null,
+        timestamp,
+        timestamp,
+      );
       this.audit(actorId, "passport.created", "passport", id, {
-        model: "EU-2026/705",
+        model: input.modelVersion || "EU pet passport",
         physicalBookletNumber: `${input.countryCode} ${input.number}`,
       });
     });
     return id;
   }
 
-  listPassports(user?: User): Passport[] {
+  listPassports(user: User): Passport[] {
     const query = `
       SELECT pp.*, p.name AS pet_name, p.species, p.breed, p.sex, p.birth_date, p.colour,
              p.features, o.id AS owner_id, o.first_name || ' ' || o.last_name AS owner_name,
@@ -488,14 +520,11 @@ export class PetPassDatabase {
       JOIN owners o ON o.id = p.owner_id
       LEFT JOIN users u ON u.id = pp.issuing_vet_id
     `;
-    if (user?.role === "owner") {
-      return this.raw.prepare(
-        `${query} WHERE lower(o.email) = lower(?) ORDER BY pp.created_at DESC`,
-      ).all(
-        user.email,
-      ) as unknown as Passport[];
-    }
-    return this.raw.prepare(`${query} ORDER BY pp.created_at DESC`).all() as unknown as Passport[];
+    return this.raw.prepare(
+      `${query} WHERE lower(o.email) = lower(?) ORDER BY pp.created_at DESC`,
+    ).all(
+      user.email,
+    ) as unknown as Passport[];
   }
 
   getPassport(id: string): Passport | undefined {
@@ -512,7 +541,7 @@ export class PetPassDatabase {
   }
 
   canAccessPassport(user: User, passport: Passport): boolean {
-    return user.role !== "owner" || user.email.toLowerCase() === passport.owner_email.toLowerCase();
+    return user.email.toLowerCase() === passport.owner_email.toLowerCase();
   }
 
   addIdentification(
@@ -520,7 +549,7 @@ export class PetPassDatabase {
     input: Omit<Identification, "id" | "verified_by" | "created_at">,
   ): string {
     const passport = this.getPassport(input.passport_id);
-    if (!passport || passport.status !== "draft") {
+    if (!passport || passport.status === "void") {
       throw new Error("Passport record is not editable");
     }
     const id = crypto.randomUUID();
@@ -539,7 +568,7 @@ export class PetPassDatabase {
         actorId,
         timestamp,
       );
-      this.audit(actorId, "identification.verified", "passport", input.passport_id, {
+      this.audit(actorId, "identification.copied", "passport", input.passport_id, {
         kind: input.kind,
         codeSuffix: input.code.slice(-4),
       });
@@ -567,7 +596,7 @@ export class PetPassDatabase {
           (id, passport_id, type, data_json, created_by, signed_by, signed_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(id, passportId, type, JSON.stringify(data), actorId, actorId, timestamp, timestamp);
-      this.audit(actorId, "medical_record.signed", "passport", passportId, { type, recordId: id });
+      this.audit(actorId, "medical_record.copied", "passport", passportId, { type, recordId: id });
     });
     return id;
   }
@@ -580,35 +609,10 @@ export class PetPassDatabase {
     `).all(passportId) as unknown as MedicalRecord[];
   }
 
-  recordPhysicalIssue(actorId: string, passportId: string): void {
-    const passport = this.getPassport(passportId);
-    if (!passport || passport.status !== "draft") throw new Error("Passport record is not a draft");
-    const identifications = this.listIdentifications(passportId);
-    const rabies = this.listMedicalRecords(passportId).filter((record) => record.type === "rabies");
-    if (identifications.length === 0 || rabies.length === 0) {
-      throw new Error("Identification and rabies entry required before recording physical issue");
-    }
-    const timestamp = now();
-    this.transaction(() => {
-      this.raw.prepare(`
-        UPDATE passports SET status = 'recorded', issuing_vet_id = ?, issued_at = ?, updated_at = ?
-        WHERE id = ?
-      `).run(actorId, timestamp, timestamp, passportId);
-      this.audit(actorId, "passport.physical_issue_recorded", "passport", passportId, {
-        notice:
-          "Records an authorised veterinarian's physical booklet issue; does not issue digitally",
-      });
-    });
-  }
-
-  getCounts(user: User): { pets: number; passports: number; owners: number; due: number } {
+  getCounts(user: User): { pets: number; passports: number } {
     const pets = this.listPets(user);
     const passports = this.listPassports(user);
-    const owners = user.role === "owner"
-      ? new Set(pets.map((pet) => pet.owner_id)).size
-      : this.listOwners().length;
-    const due = passports.filter((passport) => passport.status === "draft").length;
-    return { pets: pets.length, passports: passports.length, owners, due };
+    return { pets: pets.length, passports: passports.length };
   }
 
   listAudit(limit = 100): Array<Record<string, unknown>> {

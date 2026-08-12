@@ -3,16 +3,8 @@ export interface AppConfig {
   port: number;
   origin: string;
   dbPath: string;
-  adminEmail: string;
-  adminPassword: string;
-  memberState: string;
   countryCode: string;
   secureCookies: boolean;
-}
-
-async function readSecretFile(path: string | undefined): Promise<string | undefined> {
-  if (!path) return undefined;
-  return (await Deno.readTextFile(path)).trim();
 }
 
 const ENV_NAMES = [
@@ -20,14 +12,10 @@ const ENV_NAMES = [
   "APP_HOST",
   "APP_DB_PATH",
   "APP_ORIGIN",
-  "APP_ADMIN_EMAIL",
-  "APP_ADMIN_PASSWORD",
-  "APP_ADMIN_PASSWORD_FILE",
-  "APP_MEMBER_STATE",
   "APP_COUNTRY_CODE",
 ] as const;
 
-export async function loadConfig(provided?: Record<string, string>): Promise<AppConfig> {
+export function loadConfig(provided?: Record<string, string>): AppConfig {
   const env: Record<string, string> = provided ?? {};
   if (!provided) {
     for (const name of ENV_NAMES) {
@@ -41,16 +29,11 @@ export async function loadConfig(provided?: Record<string, string>): Promise<App
   const origin = (env.APP_ORIGIN ?? `http://localhost:${port}`).replace(/\/$/, "");
   const countryCode = (env.APP_COUNTRY_CODE ?? "DE").toUpperCase();
   if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error("APP_COUNTRY_CODE must be ISO alpha-2");
-  const adminPassword = env.APP_ADMIN_PASSWORD ??
-    await readSecretFile(env.APP_ADMIN_PASSWORD_FILE) ?? "";
   return {
     host,
     port,
     origin,
     dbPath: env.APP_DB_PATH ?? "./data/petpass.db",
-    adminEmail: (env.APP_ADMIN_EMAIL ?? "admin@example.test").toLowerCase(),
-    adminPassword,
-    memberState: env.APP_MEMBER_STATE ?? "Member State",
     countryCode,
     secureCookies: origin.startsWith("https://"),
   };

@@ -1,4 +1,4 @@
-import type { Identification, MedicalRecord, Passport, Pet, RecordType } from "./types.ts";
+import type { RecordType } from "./types.ts";
 
 export class ValidationError extends Error {}
 
@@ -21,6 +21,11 @@ export function isoDate(value: FormDataEntryValue | null, label: string): string
     throw new ValidationError(`${label} must be a valid date`);
   }
   return text;
+}
+
+export function optionalIsoDate(value: FormDataEntryValue | null, label: string): string {
+  const text = optional(value, 10);
+  return text ? isoDate(text, label) : "";
 }
 
 export function assertCountryCode(value: string): string {
@@ -71,106 +76,4 @@ export function displayDate(value: string | null | undefined): string {
   if (!value) return "—";
   const [year, month, day] = value.slice(0, 10).split("-");
   return year && month && day ? `${day}/${month}/${year}` : value;
-}
-
-export interface ReadinessResult {
-  ready: boolean;
-  checks: Array<{ level: "pass" | "warning" | "fail"; message: string }>;
-  ruleset: string;
-}
-
-function daysBetween(start: string, end: string): number {
-  return Math.floor(
-    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000,
-  );
-}
-
-export function travelReadiness(
-  passport: Passport,
-  pet: Pet,
-  ids: Identification[],
-  records: MedicalRecord[],
-  destination: string,
-  travelDate: string,
-): ReadinessResult {
-  const checks: ReadinessResult["checks"] = [];
-  if (ids.length === 0) {
-    checks.push({ level: "fail", message: "No verified animal identification" });
-  } else checks.push({ level: "pass", message: "Animal identification recorded" });
-
-  const active = records.filter((record) => record.status === "signed");
-  const rabies = active.filter((record) => record.type === "rabies").map((record) => ({
-    record,
-    data: JSON.parse(record.data_json) as Record<string, string>,
-  })).sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""))[0];
-  if (!rabies) {
-    checks.push({ level: "fail", message: "No signed rabies vaccination" });
-  } else {
-    if (rabies.data.valid_until < travelDate) {
-      checks.push({
-        level: "fail",
-        message: `Rabies vaccination expires ${displayDate(rabies.data.valid_until)}`,
-      });
-    } else {
-      checks.push({
-        level: "pass",
-        message: `Rabies vaccination valid through ${displayDate(rabies.data.valid_until)}`,
-      });
-    }
-    if (daysBetween(rabies.data.date, travelDate) < 21) {
-      checks.push({
-        level: "warning",
-        message: "Primary-vaccination 21-day wait may not be complete",
-      });
-    }
-    if (daysBetween(pet.birth_date, rabies.data.date) < 84) {
-      checks.push({ level: "warning", message: "Pet may have been under 12 weeks at vaccination" });
-    }
-    const latestId = [...ids].sort((a, b) => b.marked_on.localeCompare(a.marked_on))[0];
-    if (latestId && latestId.marked_on > rabies.data.date) {
-      checks.push({
-        level: "fail",
-        message: "Identification date follows rabies vaccination date",
-      });
-    }
-  }
-
-  if (["FI", "IE", "MT", "NI", "NO"].includes(destination)) {
-    const treatment = active.filter((record) =>
-      record.type === "echinococcus"
-    ).map((record) => JSON.parse(record.data_json) as Record<string, string>).sort((a, b) =>
-      (b.date ?? "").localeCompare(a.date ?? "")
-    )[0];
-    if (!treatment) {
-      checks.push({
-        level: "fail",
-        message: "Destination requires signed anti-Echinococcus treatment",
-      });
-    } else {
-      const hours = daysBetween(treatment.date, travelDate) * 24;
-      if (hours < 24 || hours > 120) {
-        checks.push({
-          level: "warning",
-          message: "Treatment must be 24-120 hours before scheduled entry; verify exact local time",
-        });
-      } else {checks.push({
-          level: "pass",
-          message: "Anti-Echinococcus treatment date is within 24-120 hour window",
-        });}
-    }
-  }
-
-  if (passport.status === "void") {
-    checks.push({ level: "fail", message: "Passport record is void" });
-  }
-  checks.push({
-    level: "warning",
-    message:
-      "Advisory only. Authorised veterinarian and destination authority make final determination.",
-  });
-  return {
-    ready: !checks.some((check) => check.level === "fail"),
-    checks,
-    ruleset: "EU-2026/131 + EU-2026/705, reviewed 2026-08-11",
-  };
 }

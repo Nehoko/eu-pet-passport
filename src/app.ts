@@ -6,8 +6,8 @@ import {
   assertPassportNumber,
   isoDate,
   optional,
+  optionalIsoDate,
   required,
-  travelReadiness,
   validateRecord,
   ValidationError,
 } from "./domain.ts";
@@ -20,22 +20,21 @@ import {
   sha256,
   verifyPassword,
 } from "./security.ts";
-import type { RecordType, Role, SessionContext, Species, User } from "./types.ts";
+import type { RecordType, SessionContext, Species, User } from "./types.ts";
 import {
   alert,
-  auditPage,
   dashboardPage,
+  emergencyPage,
   layout,
   loginPage,
-  ownersPage,
   passportDetailPage,
   passportFormPage,
-  passportPrintPage,
   passportsPage,
   petDetailPage,
   petFormPage,
   petsPage,
-  usersPage,
+  profilePage,
+  signupPage,
 } from "./views.ts";
 
 export interface AppDependencies {
@@ -44,8 +43,6 @@ export interface AppDependencies {
 }
 
 const attempts = new Map<string, { count: number; reset: number }>();
-
-class AuthorizationError extends Error {}
 
 function response(
   body: string,
@@ -97,22 +94,6 @@ function errorResponse(error: unknown, user?: User, csrf = "", status = 400): Re
   );
 }
 
-function canWrite(user: User): boolean {
-  return user.role === "admin" || (user.role === "veterinarian" && user.vet_verified === 1);
-}
-
-function requireWrite(user: User): void {
-  if (!canWrite(user)) {
-    throw new AuthorizationError("Verified veterinarian or administrator required");
-  }
-}
-
-function requireRole(user: User, roles: Role[]): void {
-  if (!roles.includes(user.role)) {
-    throw new AuthorizationError("You do not have permission for this action");
-  }
-}
-
 async function formData(req: Request): Promise<FormData> {
   const length = Number(req.headers.get("content-length") ?? "0");
   if (length > 1_000_000) throw new ValidationError("Request body exceeds 1 MB");
@@ -127,9 +108,7 @@ function checkOrigin(req: Request, config: AppConfig): void {
   if (origin && origin !== config.origin && !opaqueSameOrigin) {
     throw new ValidationError("Cross-origin form submission rejected");
   }
-  if (site === "cross-site") {
-    throw new ValidationError("Cross-site form submission rejected");
-  }
+  if (site === "cross-site") throw new ValidationError("Cross-site form submission rejected");
 }
 
 function checkCsrf(data: FormData, session: SessionContext): void {
@@ -137,6 +116,14 @@ function checkCsrf(data: FormData, session: SessionContext): void {
   if (!token || token !== session.csrf) {
     throw new ValidationError("CSRF token is invalid or expired");
   }
+}
+
+function emailAddress(value: FormDataEntryValue | null): string {
+  const email = required(value, "Email", 200).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError("Email address is invalid");
+  }
+  return email;
 }
 
 function loginKey(req: Request, email: string): string {
@@ -171,6 +158,14 @@ export function createApp(
     return database.getSession(await sha256(token));
   }
 
+  async function startSession(userId: string): Promise<Response> {
+    const token = randomToken();
+    database.createSession(userId, await sha256(token), randomToken(24));
+    return redirect("/", {
+      "Set-Cookie": sessionCookie(cookieName, token, config.secureCookies),
+    });
+  }
+
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const path = url.pathname;
@@ -179,7 +174,7 @@ export function createApp(
       if (path === "/health/live") return json({ status: "ok" });
       if (path === "/health/ready") {
         database.raw.prepare("SELECT 1").get();
-        return json({ status: "ready", database: "ok", model: "EU-2026/705" });
+        return json({ status: "ready", database: "ok", edition: "personal-copy" });
       }
       if (path === "/app.css" || path === "/print.css" || path === "/print.js") {
         const file = path === "/app.css"
@@ -191,9 +186,7 @@ export function createApp(
         const type = path.endsWith(".js")
           ? "text/javascript; charset=utf-8"
           : "text/css; charset=utf-8";
-        return response(asset, 200, type, {
-          "Cache-Control": "public, max-age=3600",
-        });
+        return response(asset, 200, type, { "Cache-Control": "public, max-age=3600" });
       }
 
       const session = await sessionFor(req);
@@ -206,7 +199,7 @@ export function createApp(
       if (req.method === "POST" && path === "/login") {
         checkOrigin(req, config);
         const data = await formData(req);
-        const email = required(data.get("email"), "Email", 200).toLowerCase();
+        const email = emailAddress(data.get("email"));
         const password = required(data.get("password"), "Password", 1000);
         const key = loginKey(req, email);
         if (rateLimited(key)) {
@@ -226,11 +219,40 @@ export function createApp(
           return response(loginPage("Email or password is incorrect."), 401);
         }
         attempts.delete(key);
-        const token = randomToken();
-        database.createSession(user.id, await sha256(token), randomToken(24));
-        return redirect("/", {
-          "Set-Cookie": sessionCookie(cookieName, token, config.secureCookies),
-        });
+        return await startSession(user.id);
+      }
+
+      if (req.method === "GET" && path === "/signup") {
+        if (session) return redirect("/");
+        return response(signupPage());
+      }
+
+      if (req.method === "POST" && path === "/signup") {
+        checkOrigin(req, config);
+        try {
+          const data = await formData(req);
+          const firstName = required(data.get("first_name"), "First name", 100);
+          const lastName = required(data.get("last_name"), "Last name", 100);
+          const email = emailAddress(data.get("email"));
+          const password = required(data.get("password"), "Password", 1000);
+          const confirmation = required(
+            data.get("password_confirmation"),
+            "Password confirmation",
+            1000,
+          );
+          if (password.length < 14) {
+            throw new ValidationError("Password must contain at least 14 characters");
+          }
+          if (password !== confirmation) throw new ValidationError("Passwords do not match");
+          if (database.getUserAuth(email) || database.getOwnerByEmail(email)) {
+            throw new ValidationError("An account with this email already exists");
+          }
+          const userId = database.createAccount({ email, firstName, lastName, password });
+          return await startSession(userId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Account creation failed";
+          return response(signupPage(message), 400);
+        }
       }
 
       if (!session) {
@@ -239,10 +261,7 @@ export function createApp(
       }
 
       const { user, csrf } = session;
-
-      if (req.method === "POST") {
-        checkOrigin(req, config);
-      }
+      if (req.method === "POST") checkOrigin(req, config);
 
       if (req.method === "POST" && path === "/logout") {
         const data = await formData(req);
@@ -254,20 +273,35 @@ export function createApp(
       }
 
       if (req.method === "GET" && path === "/") {
+        const owner = database.getOwnerByEmail(user.email);
+        if (!owner) return errorResponse(new Error("Account profile not found"), user, csrf, 500);
         return response(
-          dashboardPage(user, database.getCounts(user), database.listPassports(user), csrf),
+          dashboardPage(
+            user,
+            owner,
+            database.getCounts(user),
+            database.listPassports(user),
+            csrf,
+          ),
         );
       }
 
-      if (req.method === "GET" && path === "/owners") {
-        requireRole(user, ["admin", "veterinarian", "auditor"]);
-        return response(layout("Owners", ownersPage(database.listOwners(), csrf), user, csrf));
+      if (req.method === "GET" && path === "/profile") {
+        const owner = database.getOwnerByEmail(user.email);
+        if (!owner) return notFound(user, csrf);
+        return response(
+          layout(
+            "My details",
+            profilePage(owner, csrf, url.searchParams.get("saved") === "1"),
+            user,
+            csrf,
+          ),
+        );
       }
-      if (req.method === "POST" && path === "/owners") {
-        requireWrite(user);
+      if (req.method === "POST" && path === "/profile") {
         const data = await formData(req);
         checkCsrf(data, session);
-        database.createOwner(user.id, {
+        database.updateOwnerProfile(user.id, user.email, {
           first_name: required(data.get("first_name"), "First name", 100),
           last_name: required(data.get("last_name"), "Last name", 100),
           address: required(data.get("address"), "Address", 200),
@@ -275,30 +309,27 @@ export function createApp(
           city: required(data.get("city"), "City", 100),
           country: required(data.get("country"), "Country", 100),
           phone: optional(data.get("phone"), 50),
-          email: required(data.get("email"), "Email", 200),
         });
-        return redirect("/owners");
+        return redirect("/profile?saved=1");
       }
 
       if (req.method === "GET" && path === "/pets") {
-        return response(layout("Pets", petsPage(database.listPets(user)), user, csrf));
+        return response(layout("My pets", petsPage(database.listPets(user)), user, csrf));
       }
       if (req.method === "GET" && path === "/pets/new") {
-        requireWrite(user);
-        return response(
-          layout("Register pet", petFormPage(database.listOwners(), csrf), user, csrf),
-        );
+        return response(layout("Add pet", petFormPage(csrf), user, csrf));
       }
       if (req.method === "POST" && path === "/pets") {
-        requireWrite(user);
         const data = await formData(req);
         checkCsrf(data, session);
+        const owner = database.getOwnerByEmail(user.email);
+        if (!owner) return notFound(user, csrf);
         const species = required(data.get("species"), "Species", 20) as Species;
         if (!["dog", "cat", "ferret"].includes(species)) {
           throw new ValidationError("Species is not supported");
         }
         const id = database.createPet(user.id, {
-          owner_id: required(data.get("owner_id"), "Owner", 50),
+          owner_id: owner.id,
           name: required(data.get("name"), "Name", 100),
           species,
           breed: required(data.get("breed"), "Breed", 100),
@@ -311,10 +342,8 @@ export function createApp(
       }
       const petId = routeId(path, /^\/pets\/([0-9a-f-]+)$/);
       if (req.method === "GET" && petId) {
-        const pet = database.getPet(petId);
-        if (!pet || !database.listPets(user).some((item) => item.id === petId)) {
-          return notFound(user, csrf);
-        }
+        const pet = database.listPets(user).find((item) => item.id === petId);
+        if (!pet) return notFound(user, csrf);
         const passports = database.listPassports(user).filter((passport) =>
           passport.pet_id === petId
         );
@@ -322,16 +351,21 @@ export function createApp(
       }
 
       if (req.method === "GET" && path === "/passports") {
+        const pets = database.listPets(user);
         return response(
-          layout("Passports", passportsPage(database.listPassports(user)), user, csrf),
+          layout(
+            "My passport copies",
+            passportsPage(database.listPassports(user), pets.length > 0),
+            user,
+            csrf,
+          ),
         );
       }
       if (req.method === "GET" && path === "/passports/new") {
-        requireWrite(user);
         return response(layout(
-          "Add passport record",
+          "Add passport copy",
           passportFormPage(
-            database.listPets(),
+            database.listPets(user),
             csrf,
             config.countryCode,
             url.searchParams.get("pet") ?? "",
@@ -341,28 +375,32 @@ export function createApp(
         ));
       }
       if (req.method === "POST" && path === "/passports") {
-        requireWrite(user);
         const data = await formData(req);
         checkCsrf(data, session);
+        const petId = required(data.get("pet_id"), "Pet", 50);
+        if (!database.listPets(user).some((pet) => pet.id === petId)) return notFound(user, csrf);
         const id = database.createPassport(user.id, {
-          petId: required(data.get("pet_id"), "Pet", 50),
+          petId,
           countryCode: assertCountryCode(required(data.get("country_code"), "Country code", 2)),
           number: assertPassportNumber(required(data.get("number"), "Physical booklet number", 32)),
+          modelVersion: optional(data.get("model_version"), 100),
+          issuingVet: optional(data.get("issuing_vet"), 150),
+          issuedOn: optionalIsoDate(data.get("issued_on"), "Physical issue date"),
         });
         return redirect(`/passports/${id}`);
       }
 
-      const printId = routeId(path, /^\/passports\/([0-9a-f-]+)\/print$/);
-      if (req.method === "GET" && printId) {
-        const passport = database.getPassport(printId);
+      const emergencyId = routeId(path, /^\/passports\/([0-9a-f-]+)\/(?:print|emergency)$/);
+      if (req.method === "GET" && emergencyId) {
+        const passport = database.getPassport(emergencyId);
         if (!passport || !database.canAccessPassport(user, passport)) return notFound(user, csrf);
         const owner = database.getOwner(passport.owner_id);
         if (!owner) return notFound(user, csrf);
-        return response(passportPrintPage(
+        return response(emergencyPage(
           passport,
           owner,
-          database.listIdentifications(printId),
-          database.listMedicalRecords(printId),
+          database.listIdentifications(emergencyId),
+          database.listMedicalRecords(emergencyId),
         ));
       }
 
@@ -371,18 +409,16 @@ export function createApp(
         const passport = database.getPassport(passportId);
         if (!passport || !database.canAccessPassport(user, passport)) return notFound(user, csrf);
         const owner = database.getOwner(passport.owner_id);
-        const pet = database.getPet(passport.pet_id);
-        if (!owner || !pet) return notFound(user, csrf);
-        const ids = database.listIdentifications(passportId);
-        const records = database.listMedicalRecords(passportId);
-        const destination = url.searchParams.get("destination");
-        const travelDate = url.searchParams.get("travel_date");
-        const readiness = destination && travelDate
-          ? travelReadiness(passport, pet, ids, records, destination, travelDate)
-          : undefined;
+        if (!owner) return notFound(user, csrf);
         return response(layout(
           passport.pet_name,
-          passportDetailPage(passport, owner, ids, records, user, csrf, readiness),
+          passportDetailPage(
+            passport,
+            owner,
+            database.listIdentifications(passportId),
+            database.listMedicalRecords(passportId),
+            csrf,
+          ),
           user,
           csrf,
         ));
@@ -390,7 +426,8 @@ export function createApp(
 
       const identificationId = routeId(path, /^\/passports\/([0-9a-f-]+)\/identifications$/);
       if (req.method === "POST" && identificationId) {
-        requireWrite(user);
+        const passport = database.getPassport(identificationId);
+        if (!passport || !database.canAccessPassport(user, passport)) return notFound(user, csrf);
         const data = await formData(req);
         checkCsrf(data, session);
         const kind = required(data.get("kind"), "Identification kind", 20);
@@ -412,10 +449,11 @@ export function createApp(
 
       const recordId = routeId(path, /^\/passports\/([0-9a-f-]+)\/records$/);
       if (req.method === "POST" && recordId) {
-        requireWrite(user);
+        const passport = database.getPassport(recordId);
+        if (!passport || !database.canAccessPassport(user, passport)) return notFound(user, csrf);
         const data = await formData(req);
         checkCsrf(data, session);
-        const type = required(data.get("type"), "Section", 30) as RecordType;
+        const type = required(data.get("type"), "Entry type", 30) as RecordType;
         if (
           ![
             "rabies",
@@ -427,7 +465,7 @@ export function createApp(
             "legalisation",
             "other",
           ].includes(type)
-        ) throw new ValidationError("Invalid record section");
+        ) throw new ValidationError("Invalid entry type");
         const values: Record<string, string> = {
           product: optional(data.get("product"), 200),
           batch: optional(data.get("batch"), 100),
@@ -444,66 +482,6 @@ export function createApp(
         return redirect(`/passports/${recordId}`);
       }
 
-      const issueId = routeId(path, /^\/passports\/([0-9a-f-]+)\/record-issue$/);
-      if (req.method === "POST" && issueId) {
-        requireWrite(user);
-        const data = await formData(req);
-        checkCsrf(data, session);
-        const password = required(data.get("password"), "Current password", 1000);
-        const auth = database.getUserAuth(user.email);
-        if (
-          !auth ||
-          !verifyPassword(
-            password,
-            auth.password_salt,
-            auth.password_hash,
-            auth.password_iterations,
-          )
-        ) {
-          throw new ValidationError("Current password is incorrect");
-        }
-        database.recordPhysicalIssue(user.id, issueId);
-        return redirect(`/passports/${issueId}`);
-      }
-
-      if (req.method === "GET" && path === "/admin/users") {
-        requireRole(user, ["admin"]);
-        return response(layout("Users", usersPage(database.listUsers(), csrf), user, csrf));
-      }
-      if (req.method === "POST" && path === "/admin/users") {
-        requireRole(user, ["admin"]);
-        const data = await formData(req);
-        checkCsrf(data, session);
-        const role = required(data.get("role"), "Role", 30) as Role;
-        if (!["admin", "veterinarian", "owner", "auditor"].includes(role)) {
-          throw new ValidationError("Invalid role");
-        }
-        const email = required(data.get("email"), "Email", 200);
-        if (role === "owner" && !database.getOwnerByEmail(email)) {
-          throw new ValidationError(
-            "Create an Owner contact with this exact email before creating its login account",
-          );
-        }
-        database.createUser(user.id, {
-          email,
-          displayName: required(data.get("display_name"), "Display name", 100),
-          password: required(data.get("password"), "Password", 1000),
-          role,
-          vetVerified: role === "veterinarian" && data.get("vet_verified") === "1",
-        });
-        return redirect("/admin/users");
-      }
-
-      if (req.method === "GET" && path === "/audit") {
-        requireRole(user, ["admin", "auditor"]);
-        return response(layout(
-          "Audit trail",
-          auditPage(database.listAudit(), database.verifyAuditChain()),
-          user,
-          csrf,
-        ));
-      }
-
       const apiId = routeId(path, /^\/api\/v1\/passports\/([0-9a-f-]+)$/);
       if (req.method === "GET" && apiId) {
         const passport = database.getPassport(apiId);
@@ -518,29 +496,25 @@ export function createApp(
             data: JSON.parse(record.data_json),
             data_json: undefined,
           })),
-          disclaimer: "Digital companion record; not valid as original EU pet passport",
+          disclaimer: "Personal digital copy; not an official pet passport",
         });
       }
 
       return notFound(user, csrf);
     } catch (error) {
-      if (error instanceof AuthorizationError) {
-        const session = await sessionFor(req);
-        return errorResponse(error, session?.user, session?.csrf, 403);
-      }
       if (error instanceof ValidationError) {
-        const session = await sessionFor(req);
-        return errorResponse(error, session?.user, session?.csrf, 400);
+        const current = await sessionFor(req);
+        return errorResponse(error, current?.user, current?.csrf, 400);
       }
       console.error("request_failed", {
         path,
         message: error instanceof Error ? error.message : String(error),
       });
-      const session = await sessionFor(req);
+      const current = await sessionFor(req);
       return errorResponse(
         new Error("Request failed safely. Check server logs."),
-        session?.user,
-        session?.csrf,
+        current?.user,
+        current?.csrf,
         500,
       );
     }

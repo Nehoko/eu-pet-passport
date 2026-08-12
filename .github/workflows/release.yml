@@ -103,7 +103,9 @@ jobs:
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
           VERSION="${RELEASE_TAG#v}"
           TAGS=("-t" "$IMAGE:$VERSION")
-          if [[ "$VERSION" != *-* ]]; then
+          if [[ "$VERSION" == *-personal.* ]]; then
+            TAGS+=("-t" "$IMAGE:personal")
+          elif [[ "$VERSION" != *-* ]]; then
             MINOR="${VERSION%.*}"
             MAJOR="${VERSION%%.*}"
             TAGS+=("-t" "$IMAGE:$MINOR" "-t" "$IMAGE:$MAJOR" "-t" "$IMAGE:latest")

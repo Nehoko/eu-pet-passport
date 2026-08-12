@@ -1,54 +1,49 @@
 import { strict as assert } from "node:assert";
+import { DatabaseSync } from "node:sqlite";
 import { PetPassDatabase } from "../src/db.ts";
 import { verifyPassword } from "../src/security.ts";
 
-Deno.test("admin reset rehashes password, revokes sessions, and audits", async () => {
+Deno.test("self-service account creates one personal profile", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   try {
-    database.bootstrapAdmin("admin@example.test", "admin-password-long-enough");
-    const original = database.getUserAuth("admin@example.test")!;
-    database.createSession(original.id, "session-digest", "csrf-token");
-    const ownerId = database.createUser(original.id, {
-      email: "owner@example.test",
-      displayName: "Owner User",
+    const userId = database.createAccount({
+      email: "ada@example.test",
+      firstName: "Ada",
+      lastName: "Owner",
       password: "owner-password-long-enough",
-      role: "owner",
-      vetVerified: false,
     });
-
-    assert.throws(
-      () => database.resetAdminPassword("owner@example.test", "new-password-long-enough"),
-      /administrator account not found/,
-    );
-    assert.ok(database.getUser(ownerId));
-
-    const result = database.resetAdminPassword(
-      "ADMIN@example.test",
-      "new-admin-password-long-enough",
-    );
-    assert.deepEqual(result, { email: "admin@example.test", sessionsRevoked: 1 });
-    const updated = database.getUserAuth("admin@example.test")!;
+    const account = database.getUserAuth("ADA@example.test")!;
+    assert.equal(account.id, userId);
     assert.equal(
       verifyPassword(
-        "admin-password-long-enough",
-        updated.password_salt,
-        updated.password_hash,
-        updated.password_iterations,
-      ),
-      false,
-    );
-    assert.equal(
-      verifyPassword(
-        "new-admin-password-long-enough",
-        updated.password_salt,
-        updated.password_hash,
-        updated.password_iterations,
+        "owner-password-long-enough",
+        account.password_salt,
+        account.password_hash,
+        account.password_iterations,
       ),
       true,
     );
-    assert.equal(database.getSession("session-digest"), undefined);
-    assert.equal(database.listAudit()[0].action, "admin.password_reset");
+    const columns = database.raw.prepare("PRAGMA table_info(users)").all() as Array<{
+      name: string;
+    }>;
+    assert.equal(columns.some((column) => column.name === "role"), false);
+    assert.equal(columns.some((column) => column.name === "vet_verified"), false);
+    const owner = database.getOwnerByEmail("ada@example.test")!;
+    assert.equal(owner.first_name, "Ada");
+    assert.equal(owner.address, "");
+
+    database.updateOwnerProfile(userId, account.email, {
+      first_name: "Ada",
+      last_name: "Lovelace",
+      address: "1 Europe Way",
+      postal_code: "10115",
+      city: "Berlin",
+      country: "Germany",
+      phone: "+49 123",
+    });
+    assert.equal(database.getOwnerByEmail(account.email)?.city, "Berlin");
+    assert.equal(database.getUser(userId)?.display_name, "Ada Lovelace");
     assert.equal(database.verifyAuditChain(), true);
   } finally {
     database.close();
@@ -56,25 +51,68 @@ Deno.test("admin reset rehashes password, revokes sessions, and audits", async (
   }
 });
 
-Deno.test("database workflow records physical issue and preserves audit chain", async () => {
+Deno.test("personal edition refuses a clinic-edition database", async () => {
+  const directory = await Deno.makeTempDir();
+  const path = `${directory}/clinic.db`;
+  const legacy = new DatabaseSync(path);
+  try {
+    legacy.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        display_name TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        password_iterations INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL,
+        vet_verified INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT
+    `);
+  } finally {
+    legacy.close();
+  }
+  try {
+    assert.throws(
+      () => new PetPassDatabase(path),
+      /Clinic-edition database detected/,
+    );
+    const check = new DatabaseSync(path);
+    try {
+      const columns = check.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+      assert.equal(columns.some((column) => column.name === "role"), true);
+      assert.equal(columns.some((column) => column.name === "vet_verified"), true);
+    } finally {
+      check.close();
+    }
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("personal records stay scoped to account owner", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   try {
-    database.bootstrapAdmin("admin@example.test", "admin-password-long-enough");
-    const admin = database.getUserAuth("admin@example.test");
-    assert.ok(admin);
-    const ownerId = database.createOwner(admin.id, {
-      first_name: "Ada",
-      last_name: "Owner",
-      address: "1 Europe Way",
-      postal_code: "10115",
-      city: "Berlin",
-      country: "Germany",
-      phone: "+49 123",
+    const adaId = database.createAccount({
       email: "ada@example.test",
+      firstName: "Ada",
+      lastName: "Owner",
+      password: "owner-password-long-enough",
     });
-    const petId = database.createPet(admin.id, {
-      owner_id: ownerId,
+    const alexId = database.createAccount({
+      email: "alex@example.test",
+      firstName: "Alex",
+      lastName: "Other",
+      password: "other-password-long-enough",
+    });
+    const ada = database.getUser(adaId)!;
+    const alex = database.getUser(alexId)!;
+    const owner = database.getOwnerByEmail(ada.email)!;
+    const petId = database.createPet(ada.id, {
+      owner_id: owner.id,
       name: "Luna",
       species: "dog",
       breed: "Labrador",
@@ -83,19 +121,27 @@ Deno.test("database workflow records physical issue and preserves audit chain", 
       colour: "black",
       features: "white chest",
     });
-    const passportId = database.createPassport(admin.id, {
+    const passportId = database.createPassport(ada.id, {
       petId,
       countryCode: "DE",
       number: "00 123456",
+      modelVersion: "EU physical passport",
+      issuingVet: "Dr Example",
+      issuedOn: "2025-04-12",
     });
-    database.addIdentification(admin.id, {
+    const passport = database.getPassport(passportId)!;
+    assert.equal(passport.status, "recorded");
+    assert.equal(passport.model_version, "EU physical passport");
+    assert.equal(passport.issuing_vet_name_copy, "Dr Example");
+    assert.equal(passport.issued_on_copy, "2025-04-12");
+    database.addIdentification(ada.id, {
       passport_id: passportId,
       kind: "microchip",
       code: "276098106540123",
       marked_on: "2025-12-31",
       location: "left neck",
     });
-    database.addMedicalRecord(admin.id, passportId, "rabies", {
+    database.addMedicalRecord(ada.id, passportId, "rabies", {
       product: "Nobivac Rabies",
       batch: "B-1",
       date: "2026-01-01",
@@ -106,41 +152,32 @@ Deno.test("database workflow records physical issue and preserves audit chain", 
       result: "",
       notes: "",
     });
-    database.recordPhysicalIssue(admin.id, passportId);
-    assert.equal(database.getPassport(passportId)?.status, "recorded");
+    assert.equal(database.listPets(ada).length, 1);
+    assert.equal(database.listPassports(ada).length, 1);
+    assert.equal(database.listPets(alex).length, 0);
+    assert.equal(database.listPassports(alex).length, 0);
+    assert.equal(database.canAccessPassport(alex, database.getPassport(passportId)!), false);
     assert.equal(database.verifyAuditChain(), true);
-    assert.throws(() =>
-      database.addIdentification(admin.id, {
-        passport_id: passportId,
-        kind: "microchip",
-        code: "276098106540124",
-        marked_on: "2026-02-01",
-        location: "left neck",
-      }), /not editable/);
   } finally {
     database.close();
     await Deno.remove(directory, { recursive: true });
   }
 });
 
-Deno.test("passport physical number is unique", async () => {
+Deno.test("physical passport number remains unique", async () => {
   const directory = await Deno.makeTempDir();
   const database = new PetPassDatabase(`${directory}/test.db`);
   try {
-    database.bootstrapAdmin("admin@example.test", "admin-password-long-enough");
-    const admin = database.getUserAuth("admin@example.test")!;
-    const ownerId = database.createOwner(admin.id, {
-      first_name: "Ada",
-      last_name: "Owner",
-      address: "1 Europe Way",
-      postal_code: "10115",
-      city: "Berlin",
-      country: "Germany",
-      phone: "",
+    const userId = database.createAccount({
       email: "ada@example.test",
+      firstName: "Ada",
+      lastName: "Owner",
+      password: "owner-password-long-enough",
     });
-    const petId = database.createPet(admin.id, {
-      owner_id: ownerId,
+    const user = database.getUser(userId)!;
+    const owner = database.getOwnerByEmail(user.email)!;
+    const petId = database.createPet(user.id, {
+      owner_id: owner.id,
       name: "Luna",
       species: "cat",
       breed: "European Shorthair",
@@ -149,9 +186,9 @@ Deno.test("passport physical number is unique", async () => {
       colour: "black",
       features: "",
     });
-    database.createPassport(admin.id, { petId, countryCode: "DE", number: "00 123456" });
+    database.createPassport(user.id, { petId, countryCode: "DE", number: "00 123456" });
     assert.throws(() =>
-      database.createPassport(admin.id, { petId, countryCode: "DE", number: "00 123456" })
+      database.createPassport(user.id, { petId, countryCode: "DE", number: "00 123456" })
     );
   } finally {
     database.close();

@@ -1,113 +1,91 @@
-# PetPass EU
+# PetPass Personal
 
-Self-hosted Deno/TypeScript web app for managing digital companion records for EU pet passports.
-Covers current 2026 model, secure roles, append-only veterinary entries, travel-readiness warnings,
-printable 100 × 152 mm record copies, Docker deployment, and CI/release automation.
+Self-hosted Deno/TypeScript app for keeping personal digital copies of physical EU pet passports. An
+owner creates an account, adds pets, transcribes passport details, and opens a clean emergency view
+for quick reference at a veterinary clinic.
 
-> **Legal boundary:** PetPass EU cannot issue an official EU pet passport. Only an authorised
-> veterinarian using authority-controlled physical booklet stock can do that. Every print view says
-> **RECORD COPY — NOT VALID AS ORIGINAL PASSPORT**.
+> **Not an official document.** PetPass Personal does not issue, replace, validate, or extend a pet
+> passport. Physical booklet remains authoritative and is required for travel and official checks.
+
+This personal edition lives on `codex/personal-passport`. Clinic-oriented multi-role edition remains
+preserved in release `v1.0.4` and its original branch. Compose project and volume names differ, so
+both editions can coexist without sharing data.
 
 ## Features
 
-- 2026 EU model: Sections I-XII from Implementing Regulation (EU) 2026/705.
-- Owners, dogs, cats, ferrets, physical booklet numbers, microchips, legacy tattoos.
-- Rabies vaccination, titre test, Echinococcus and parasite treatment, other vaccinations, clinical
-  examination, legalisation, national notes.
-- `admin`, authority-verified `veterinarian`, `owner`, and `auditor` roles.
-- No public signup. Admin provisions accounts; vet status must be verified.
-- PBKDF2-SHA-256 passwords, opaque sessions, 30-minute idle timeout, CSRF and origin checks, strict
-  security headers, generic login errors, throttling.
-- Signed medical entries append-only. Core identity locks when physical issue is recorded.
-- Hash-chained audit events.
-- Advisory travel check for identification, rabies timing/validity, and destination-specific
-  Echinococcus window.
-- SQLite WAL database and consistent online backup command.
-- Native `linux/amd64` and `linux/arm64` GHCR release workflow.
+- Public self-service signup; one account type only.
+- Strict account ownership: each account sees and changes only its own pets and passport copies.
+- Owner contact profile, dogs/cats/ferrets, physical booklet number, microchip or legacy tattoo.
+- Rabies, titre, parasite treatment, vaccination, clinical, legalisation, and other copied entries.
+- Single-page emergency view with owner contact, animal, identification, and health information.
+- Clear non-official warning in normal and emergency views.
+- PBKDF2-SHA-256 passwords, opaque sessions, CSRF/origin checks, strict headers, login throttling.
+- SQLite WAL storage, hash-chained internal mutation log, consistent backup command.
+- Distroless non-root container and GitHub Actions checks.
+
+No administrators, veterinarians, auditors, role management, travel assessment, digital signing, or
+physical-issue workflow exists in this edition.
 
 ## Quick start
 
-Requirements: Docker Engine with Compose v2.
+Docker Compose:
 
 ```bash
 cp .env.example .env
-mkdir -p secrets
-openssl rand -base64 24 > secrets/admin_password.txt
-docker compose up -d
+docker compose up --build --detach
 ```
 
-Open `http://localhost:8000`. Sign in with `APP_ADMIN_EMAIL` and password stored in
-`secrets/admin_password.txt`.
+Open `http://localhost:8000`, choose **Create one**, then add your details and pet.
 
-`APP_ADMIN_EMAIL` and `APP_ADMIN_PASSWORD` bootstrap only an empty database. To recover an existing
-administrator without deleting data, stop the app and use the audited offline `admin-reset` command;
-see [operations guide](docs/OPERATIONS.md#administrator-password-recovery).
+Apple container:
 
-For internet exposure, put app behind TLS reverse proxy and set exact public origin:
+```bash
+container build --tag ghcr.io/nehoko/eu-pet-passport:personal .
+container-compose --file compose.apple.yml up --env-file .env --detach
+```
+
+Until `personal` image is published, Apple deployment uses locally built tag above.
+
+For internet exposure, use TLS reverse proxy and exact origin:
 
 ```dotenv
 APP_ORIGIN=https://pets.example.com
 ```
 
-Cookie becomes `Secure` automatically for HTTPS origins.
-
 ## Data and backup
 
-Data lives in named volume `petpass_data`. Create transactionally consistent backup:
+Personal edition uses volume `petpass-personal_petpass_personal_data`, separate from clinic edition.
 
 ```bash
 docker compose exec app backup /data/petpass-backup-$(date +%F).db
+docker compose exec app verify-audit
 ```
 
-Copy backup out with your container/volume tooling. Encrypt backups; database contains personal and
-veterinary data. Test restore regularly. See [operations guide](docs/OPERATIONS.md).
+Database contains personal and animal-health data. Encrypt host disk and off-host backups.
 
 ## Development
 
 Requires Deno 2.9.4+.
 
 ```bash
-export APP_ADMIN_EMAIL=admin@example.test
-export APP_ADMIN_PASSWORD='development-password-long-enough'
 deno task dev
-```
-
-Checks:
-
-```bash
 deno task ci
-docker build -t petpass-eu:dev .
+docker build -t petpass-personal:dev .
 ```
 
-Health endpoints:
+Endpoints:
 
-- `GET /health/live` - process response.
-- `GET /health/ready` - database readiness and model version.
+- `GET /health/live`
+- `GET /health/ready`
+- authenticated `GET /api/v1/passports/:id`
 
-Authenticated JSON snapshot: `GET /api/v1/passports/:id`.
+## Documents
 
-Owner contact records and Owner login accounts are separate. Create the contact under **Owners**
-first, then provision an Owner login with the exact same email under **Users**. This email link
-limits the account to that owner's pets and passports.
-
-## Project documents
-
-- [Product and implementation plan](docs/PLAN.md)
-- [EU model mapping and sources](docs/EU-COMPLIANCE.md)
+- [Product plan](docs/PLAN.md)
+- [EU-copy boundary](docs/EU-COMPLIANCE.md)
 - [Security model](docs/SECURITY.md)
-- [Operations and backup](docs/OPERATIONS.md)
-
-## EU references
-
-- [Current model passport - Implementing Regulation (EU) 2026/705](https://eur-lex.europa.eu/eli/reg_impl/2026/705/oj/eng)
-- [Official Annex I visual PDF](https://www.ruokavirasto.fi/globalassets/yritykset/tuonti-ja-vienti/elaimet-eu-maat/nettisivut_eu-passi_eng_2026.pdf)
-- [Current movement rules - Delegated Regulation (EU) 2026/131](https://eur-lex.europa.eu/eli/reg_del/2026/131/oj/eng)
-- [Traceability and issuance - Delegated Regulation (EU) 2026/132](https://eur-lex.europa.eu/eli/reg_del/2026/132/oj/eng)
-- [European Commission travel guidance](https://food.ec.europa.eu/animals/live-animal-movements/dogs-cats-and-ferrets/travelling-pet-within-eu_en)
-
-Rules change. Deployer must review national rules and update advisory logic before relying on it.
+- [Operations](docs/OPERATIONS.md)
 
 ## License
 
-MIT. EU emblem and official legal text remain governed by their respective EU reuse rules. No
-third-party reference photographs are shipped.
+MIT. EU emblem and official legal text remain governed by EU reuse rules.
